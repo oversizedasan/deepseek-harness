@@ -228,6 +228,38 @@ describe('page unload report', () => {
     }
   })
 
+  it('skips the loss toast when a doc-scanner archive folder chip can rehydrate the rail', async () => {
+    const mention = '@Captures/2026-11-20_165922/'
+    const second = await bench(() => {
+      localStorage.setItem(UNLOAD_MARK, '1')
+      localStorage.setItem(`dsh.conversation.${SESSION}`, JSON.stringify({
+        draft: {
+          text: mention,
+          references: [{
+            source: 'doc-scanner',
+            ref: mention,
+            label: 'Batch scan',
+            appearance: 'folder',
+            clipboardText: mention,
+            offset: 0,
+            length: mention.length,
+          }],
+        },
+        view: null,
+        viewRequest: null,
+      }))
+    })
+    try {
+      expect(second.shell.draftSnapshot.references).toEqual([
+        expect.objectContaining({ source: 'doc-scanner', appearance: 'folder', ref: mention }),
+      ])
+      expect(second.shell.notices.getSnapshot()).toBeNull()
+      expect(localStorage.getItem(UNLOAD_MARK)).toBeNull()
+    } finally {
+      await second.runtime.dispose()
+    }
+  })
+
   it('drops marks a back-forward restore made stale', async () => {
     const b = await bench()
     try {

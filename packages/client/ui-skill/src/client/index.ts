@@ -52,7 +52,16 @@ import { SkillRow } from './SkillRow.tsx'
 import { SkillReference, type SkillReferenceInjected } from './SkillReference.tsx'
 import { skillReferenceRule } from './user-text-rules.ts'
 export type {} from './user-text-rules.ts'
+import { applySkillSlashBoost, createSkillSlashBoost, type SkillSlashBoost } from './slash-boost.ts'
+export { applySkillSlashBoost, createSkillSlashBoost, type SkillSlashBoost } from './slash-boost.ts'
 import { en, ja, es, fr, de, ru, pt, NS, zh, type SkillKey } from './locales.ts'
+
+declare module '@deepseek-ai/cordis' {
+  interface Context {
+    /** Empty-query `/` skill name boosts registered by Client plugins. */
+    skillSlashBoost: SkillSlashBoost
+  }
+}
 
 declare module '@deepseek-ai/dsh-api-session-controller/client' {
   interface SessionReferenceSourceMap {
@@ -84,6 +93,7 @@ export const inject = ['inputTriggers', 'sessions', 'slots', 'locale', 'remote',
  * @param ctx - client root context.
  */
 export function apply(ctx: ClientContext): void {
+  ctx.provide('skillSlashBoost', createSkillSlashBoost())
   ctx.effect(() => ctx.locale.register(NS, { zh, en, ja, es, fr, de, ru, pt }), 'ui-skill: dictionaries')
   ctx.uiConversation.userText.register(skillReferenceRule)
   ctx.slots.inject('tool.call.toolview', () => ctx.slots.register(
@@ -173,14 +183,17 @@ export function apply(ctx: ClientContext): void {
       const skills = await fetchCatalog(session.sessionId).promise
       // Superseded keystroke: the shared fetch stays warm, this caller yields.
       if (signal.aborted) return []
-      // The same filter as the command group of this menu, over names only.
-      return new TextSearchIndex(skills, skill => ({ fuzzy: [skill.name] })).search(query)
-        .map(skill => ({
-          name: skill.name,
-          // The user-only marker rides the description (the menu's only
-          // secondary text); `hint` is the claim-state ghost text, not a badge.
-          description: skill.modelInvocable ? skill.description : `${t('menu.userOnly')} · ${skill.description}`,
-        }))
+      // Blank query keeps Host order, then prepends registered boost names.
+      // Non-empty query still uses name-only TextSearchIndex ranking.
+      const ranked = query.trim() === ''
+        ? applySkillSlashBoost(skills, ctx.skillSlashBoost.list())
+        : new TextSearchIndex(skills, skill => ({ fuzzy: [skill.name] })).search(query)
+      return ranked.map(skill => ({
+        name: skill.name,
+        // The user-only marker rides the description (the menu's only
+        // secondary text); `hint` is the claim-state ghost text, not a badge.
+        description: skill.modelInvocable ? skill.description : `${t('menu.userOnly')} · ${skill.description}`,
+      }))
     },
     warm(session) {
       // Fire-and-forget scope-birth prewarm; the shared fetch reports

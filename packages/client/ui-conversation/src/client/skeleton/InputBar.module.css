@@ -137,6 +137,15 @@
   position: absolute;
   inset: 0 0 auto;
   height: 0;
+  /* Keep slash / popupSelect above the attachment rail rendered after this
+     anchor in the same card. pointer-events none on the zero-height host so
+     only the floated menu surface captures hits in the overlap band. */
+  z-index: 20;
+  pointer-events: none;
+}
+
+.overlayAnchor > * {
+  pointer-events: auto;
 }
 
 /* The draft's scrollport, and the ONLY scrolling box in the composer. The

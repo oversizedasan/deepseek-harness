@@ -279,6 +279,24 @@ describe('candidates: sessionId addressing', () => {
     await expect(names('flow')).resolves.toEqual([])
   })
 
+  it('prepends skillSlashBoost names on a blank query and keeps search ranking otherwise', async () => {
+    const catalog: SkillRow[] = [
+      { name: 'automate', description: 'auto' },
+      { name: 'homework-grade', description: 'grade' },
+      { name: 'office', description: 'office' },
+      { name: 'wrong-book', description: 'wrong' },
+    ]
+    const { source, ctx } = await bench(async () => ({ ok: true, value: { skills: catalog } }))
+    const dispose = ctx.skillSlashBoost.register(['homework-grade', 'wrong-book'])
+    await expect(source.candidates(proj('s1'), req('')).then(items => items.map(item => item.name)))
+      .resolves.toEqual(['homework-grade', 'wrong-book', 'automate', 'office'])
+    await expect(source.candidates(proj('s1'), req('off')).then(items => items.map(item => item.name)))
+      .resolves.toEqual(['office'])
+    dispose()
+    await expect(source.candidates(proj('s1'), req('')).then(items => items.map(item => item.name)))
+      .resolves.toEqual(['automate', 'homework-grade', 'office', 'wrong-book'])
+  })
+
   it('rejects on a failed result (the slash shell owns the menu-side fold)', async () => {
     const { source } = await bench(() => Promise.resolve({
       ok: false, error: new RemoteError('gateway/internal', 'boom', {}),

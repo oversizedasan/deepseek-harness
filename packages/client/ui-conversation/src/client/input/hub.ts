@@ -91,6 +91,19 @@ function takeUnloadMark(sessionId: SessionId): boolean {
   }
 }
 
+/**
+ * Whether the restored draft already names a document-scanner archive folder chip.
+ * Matches `DOC_SCANNER_COMMAND` / folder chips owned by `@deepseek-ai/dsh-client-ui-doc-scanner`
+ * without importing that experimental package; those chips rehydrate rail images after reload.
+ * @param references - semantic draft references after `setDraft`.
+ */
+function draftHasDocScannerArchiveFolder(
+  references: readonly { readonly source: string; readonly appearance?: string | undefined }[],
+): boolean {
+  return references.some(reference =>
+    reference.source === 'doc-scanner' && reference.appearance === 'folder')
+}
+
 /** Session-addressed input facade registry (SessionInputResolver face + composer-layer extras). */
 export class InputHub implements SessionInputResolver {
   private readonly shells = new WeakMap<SessionBinding, SessionInputShell>()
@@ -233,8 +246,12 @@ export class InputHub implements SessionInputResolver {
       }, 'conversation.input: reference catalogs')
     })
     shell.setDraft(readConversationDraft(binding.sessionId))
-    // A reload discarded the browser-owned attachments; say so instead of dropping them silently.
-    if (takeUnloadMark(binding.sessionId)) shell.notify('error', this.t('attachments.unavailable'))
+    // A reload discarded browser-owned attachments. Skip the loss toast when a
+    // doc-scanner archive folder chip can rehydrate the rail from the workspace.
+    if (takeUnloadMark(binding.sessionId)
+      && !draftHasDocScannerArchiveFolder(shell.draftSnapshot.references)) {
+      shell.notify('error', this.t('attachments.unavailable'))
+    }
     return shell
   }
 

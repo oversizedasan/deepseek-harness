@@ -410,6 +410,23 @@ describe('candidates', () => {
       expect(rows[8]).toEqual({ name: 'deploy', description: 'third-party command', section: 'command:section.commands' })
     })
 
+    it('places a registered doc-scanner contribution in the Add section after feedback', async () => {
+      const { command, source } = await bench({ commands: () => Promise.resolve({ commands: SHIPPED }) })
+      command.register(fileContribution())
+      command.register({
+        name: 'doc-scanner',
+        label: () => 'Document camera',
+        description: () => 'Connect a document scanner',
+        icon: Glyph,
+        available: () => true,
+        ui: { kind: 'action', run: () => {} },
+      })
+      const rows = await source.candidates(proj('s1'), req(''))
+      expect(rows.filter(row => row.section === 'command:section.add').map(row => row.name)).toEqual([
+        'file', 'goal', 'plan', 'feedback', 'doc-scanner',
+      ])
+    })
+
     it('a same-name override keeps its own presentation even when it copies the first-party description', async () => {
       const commands: CommandDescriptor[] = [{ name: 'goal', description: en['description.goal'], input: { hint: 'x' } }]
       const { source } = await bench({ commands: () => Promise.resolve({ commands }) })
