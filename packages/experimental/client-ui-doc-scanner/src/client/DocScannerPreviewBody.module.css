@@ -234,6 +234,42 @@
   color: var(--dsw-text-primary);
 }
 
+.detectOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.detectOverlay polygon {
+  fill: none;
+  stroke: #2ee6c7;
+  stroke-width: 2;
+}
+
+.detectBox {
+  position: absolute;
+  z-index: 1;
+  box-sizing: border-box;
+  border: 2px solid #2ee6c7;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 35%);
+  pointer-events: none;
+}
+
+.detectPill {
+  position: absolute;
+  z-index: 2;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #1f9d55;
+  color: #fff;
+  font-size: 11px;
+  line-height: 16px;
+  pointer-events: none;
+}
+
 .shutterRow {
   display: flex;
   justify-content: center;

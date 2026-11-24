@@ -103,7 +103,7 @@ describe('plugin registration', () => {
     )
     await ctx.docScanner.connect(undefined, signal())
     expect(ctx.docScanner.snapshot().connection).toMatchObject({ phase: 'ready', deviceId: 'b' })
-    expect(runtime.requests.map(row => row.method)).not.toContain('device.set_turn_detect')
+    expect(runtime.requests.map(row => row.method)).not.toContain('capture.set_turn_detect')
   })
 
   it('derives the Video endpoint from the Command URL when none is configured', async () => {

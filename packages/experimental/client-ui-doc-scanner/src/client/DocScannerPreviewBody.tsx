@@ -1,7 +1,11 @@
 /** Right-sidebar document-camera viewfinder with overlay shutter and batch strip. */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { HostObservable, InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import type { DocScannerCaptureResult, DocScannerSnapshot } from '@deepseek-ai/dsh-api-doc-scanner/types'
+import type {
+  DocScannerCaptureProfile,
+  DocScannerCaptureResult,
+  DocScannerSnapshot,
+} from '@deepseek-ai/dsh-api-doc-scanner/types'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { Button, ImageLightbox, StateDot, Tooltip } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -9,6 +13,7 @@ import type { DocScannerPreviewFeed } from './preview-feed.ts'
 import type { DocScannerReadiness } from './readiness.ts'
 import type { DocScannerSessionUi } from './session-ui.ts'
 import { DOC_SCANNER_MAX_IMAGES_PER_MESSAGE } from './batch-limit.ts'
+import { containedFrameBox, overlayPointList, overlayRect, type ContainedFrameBox } from './preview-geometry.ts'
 import { phaseDot, phaseLabel } from './status.ts'
 import { NS } from './locales.ts'
 import css from './DocScannerPreviewBody.module.css'
@@ -17,6 +22,11 @@ import css from './DocScannerPreviewBody.module.css'
 export interface DocScannerPreviewActions {
   connect: (signal: AbortSignal) => Promise<void>
   capture: (signal: AbortSignal) => Promise<RemoteResult<DocScannerCaptureResult>>
+  /**
+   * Store the shared capture profile and push it to a running preview.
+   * @param profile - page treatment, color treatment, and optional selection.
+   */
+  setCaptureProfile: (profile: DocScannerCaptureProfile) => Promise<void>
   close: () => Promise<void>
   openPreview: (sessionId: SessionId) => void
   /** Remove one still from the current batch by index. */
@@ -54,6 +64,18 @@ export type DocScannerPreviewBodyProps =
   & PropsLocale<typeof NS>
   & InjectFace<DocScannerPreviewInjected>
 
+/**
+ * Move a lightbox index within a batch, wrapping at either end.
+ * @param current - open index, or null when the lightbox is closed.
+ * @param count - number of stills in the batch.
+ * @param delta - `-1` for the previous still, `1` for the next.
+ * @returns the next index, or null when nothing is open or the batch is empty.
+ */
+export function stepLightboxIndex(current: number | null, count: number, delta: number): number | null {
+  if (current === null || count === 0) return null
+  return (current + delta + count) % count
+}
+
 /** Camera-only pane: overlay shutter on the live view and a thin batch strip. */
 export function DocScannerPreviewBody({
   sessionId,
@@ -77,13 +99,25 @@ export function DocScannerPreviewBody({
   useEffect(() => {
     bindArchiveSession(sessionId)
   }, [bindArchiveSession, sessionId])
-  const [lightbox, setLightbox] = useState<{ src: string; alt: string } | null>(null)
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
+  const [imageBox, setImageBox] = useState<ContainedFrameBox | undefined>()
+  const frameRef = useRef<HTMLImageElement>(null)
   const snapshot: DocScannerSnapshot | null = readiness.snapshot
   const phase = snapshot?.connection.phase
   const ready = readiness.connected && phase === 'ready'
   const busy = phase === 'connecting' || phase === 'opening' || phase === 'capturing'
   const working = sessionUi.working
   const captures = sessionUi.captures
+  const openIndex = lightboxIndex
+  const openCapture = openIndex === null ? undefined : captures[openIndex]
+  useEffect(() => {
+    if (lightboxIndex === null) return
+    if (captures.length === 0) {
+      setLightboxIndex(null)
+      return
+    }
+    if (lightboxIndex >= captures.length) setLightboxIndex(captures.length - 1)
+  }, [captures.length, lightboxIndex])
   const hasBatch = captures.length > 0
   const atLimit = captures.length >= DOC_SCANNER_MAX_IMAGES_PER_MESSAGE
   const previewReady = phase === 'ready' || phase === 'capturing'
@@ -95,6 +129,40 @@ export function DocScannerPreviewBody({
   else if (feed.error) status = feed.error
   else if (!previewReady) status = t('previewNotReady')
   else if (feed.streaming && feed.src === null) status = t('previewStarting')
+
+  useEffect(() => {
+    const node = frameRef.current
+    if (node === null || !(feed.frameWidth > 0) || !(feed.frameHeight > 0)) {
+      setImageBox(undefined)
+      return
+    }
+    const measure = (): void => {
+      setImageBox(containedFrameBox(node.clientWidth, node.clientHeight, feed.frameWidth, feed.frameHeight))
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(node)
+    return () => { observer.disconnect() }
+  }, [feed.frameHeight, feed.frameWidth, feed.src])
+
+  const { rects, frameWidth, frameHeight } = feed
+  const marks = imageBox === undefined
+    ? []
+    : rects.map((rect) => {
+      const corners = rect.corners
+      return {
+        box: overlayRect(imageBox, frameWidth, frameHeight, rect),
+        points: corners === undefined
+          ? undefined
+          : overlayPointList(imageBox, frameWidth, frameHeight, [
+            corners.leftTop,
+            corners.rightTop,
+            corners.rightDown,
+            corners.leftDown,
+          ]),
+      }
+    })
+  const detectionBoxes = marks.map(mark => mark.box)
 
   const primaryLabel = ready
     ? atLimit
@@ -108,9 +176,36 @@ export function DocScannerPreviewBody({
     <div className={css.pane}>
       <div className={css.viewfinder}>
         {feed.src !== null
-          ? <img className={css.frame} src={feed.src} alt={t('previewLiveAlt')} />
+          ? <img ref={frameRef} className={css.frame} src={feed.src} alt={t('previewLiveAlt')} />
           : <p className={css.status}>{status}</p>}
-
+        {marks.map((mark, index) => mark.points !== undefined
+          ? (
+            <svg
+              key={`detect-${String(index)}`}
+              className={css.detectOverlay}
+              data-testid="detect-polygon"
+            >
+              <polygon points={mark.points} />
+            </svg>
+          )
+          : (
+            <span
+              key={`detect-${String(index)}`}
+              className={css.detectBox}
+              data-testid="detect-box"
+              style={{ left: mark.box.left, top: mark.box.top, width: mark.box.width, height: mark.box.height }}
+            />
+          ))}
+        {rects.length > 0 ? (
+          <span
+            className={css.detectPill}
+            style={detectionBoxes[0] === undefined
+              ? { left: 8, top: 40 }
+              : { left: detectionBoxes[0].left, top: Math.max(8, detectionBoxes[0].top - 22) }}
+          >
+            {t('detectSuccess')}
+          </span>
+        ) : null}
         <div className={css.overlayTop}>
           <span className={css.phase}>
             <StateDot state={phaseDot(phase, readiness.error, sessionUi.message)} />
@@ -175,9 +270,7 @@ export function DocScannerPreviewBody({
                         type="button"
                         className={css.thumbOpen}
                         aria-label={t('openCapture')}
-                        onClick={() => {
-                          setLightbox({ src, alt: item.name ?? t('previewAlt') })
-                        }}
+                        onClick={() => { setLightboxIndex(index) }}
                       >
                         <img className={css.thumb} src={src} alt={t('previewAlt')} />
                       </button>
@@ -221,12 +314,19 @@ export function DocScannerPreviewBody({
         {feed.src !== null && feed.error !== null ? <p className={css.banner}>{feed.error}</p> : null}
         {sessionUi.message !== null ? <p className={css.banner}>{sessionUi.message}</p> : null}
       </div>
-      {lightbox !== null ? (
+      {openIndex !== null && openCapture !== undefined ? (
         <ImageLightbox
-          src={lightbox.src}
-          alt={lightbox.alt}
+          src={`data:${openCapture.mimeType};base64,${openCapture.dataBase64}`}
+          alt={openCapture.name ?? t('previewAlt')}
           labels={{ dialog: t('lightboxDialog'), close: t('lightboxClose') }}
-          onClose={() => { setLightbox(null) }}
+          navigation={captures.length > 1 ? {
+            previous: t('lightboxPrevious'),
+            next: t('lightboxNext'),
+            position: t('lightboxPosition', { current: openIndex + 1, total: captures.length }),
+            onPrevious: () => { setLightboxIndex(current => stepLightboxIndex(current, captures.length, -1)) },
+            onNext: () => { setLightboxIndex(current => stepLightboxIndex(current, captures.length, 1)) },
+          } : undefined}
+          onClose={() => { setLightboxIndex(null) }}
         />
       ) : null}
     </div>

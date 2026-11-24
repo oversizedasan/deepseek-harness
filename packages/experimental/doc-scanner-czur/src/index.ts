@@ -32,8 +32,9 @@ export interface Config {
    */
   allowInsecureTls: boolean
   /**
-   * When true, call `device.set_turn_detect` after open so hardgrab / page-turn
-   * stills feed `subscribeStills` (default on for classroom continuous capture).
+   * When true, enable page-turn detection after open. The Runtime does not apply
+   * `auto_capture: true`, so `capture.turn_detected` makes this connection call
+   * `capture.take`. A hardware-button event with no deliverable still does the same.
    */
   autoCapture: boolean
 }

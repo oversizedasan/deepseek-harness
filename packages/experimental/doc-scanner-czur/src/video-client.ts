@@ -1,6 +1,7 @@
 /** Host-side CZUR Video WebSocket: frame_meta text paired with the next binary JPEG. */
 import type { RawData } from 'ws'
-import { sleepUnlessAborted, type DocScannerPreviewFrame } from '@deepseek-ai/dsh-doc-scanner'
+import { sleepUnlessAborted, type DocScannerFrameRect, type DocScannerPreviewFrame } from '@deepseek-ai/dsh-doc-scanner'
+import { parseDetectedRects } from './protocol.ts'
 import { CzurSocketClient, type CzurSocketOptions } from './websocket.ts'
 
 /** Options for one Video WS stream. */
@@ -11,6 +12,7 @@ interface FrameMeta {
   readonly height: number
   readonly timestamp_ms?: number
   readonly pixel_format?: string
+  readonly rects: readonly DocScannerFrameRect[]
 }
 
 /**
@@ -118,7 +120,7 @@ export class CzurVideoClient extends CzurSocketClient<CzurVideoClientOptions> {
       if (text.trimStart().startsWith('{')) this.handleControlText(text)
       return
     }
-    const meta = this.pendingMeta ?? { width: 0, height: 0 }
+    const meta = this.pendingMeta ?? { width: 0, height: 0, rects: [] }
     this.pendingMeta = undefined
     const frame: DocScannerPreviewFrame = {
       data: bytes,
@@ -126,6 +128,7 @@ export class CzurVideoClient extends CzurSocketClient<CzurVideoClientOptions> {
       width: meta.width > 0 ? meta.width : 1,
       height: meta.height > 0 ? meta.height : 1,
       ...meta.timestamp_ms !== undefined ? { ts: meta.timestamp_ms } : { ts: Date.now() },
+      ...meta.rects.length > 0 ? { rects: meta.rects } : {},
     }
     const waiter = this.waiters.shift()
     if (waiter !== undefined) waiter(frame)
@@ -156,6 +159,7 @@ export class CzurVideoClient extends CzurSocketClient<CzurVideoClientOptions> {
         height: typeof payload.height === 'number' ? payload.height : 0,
         ...typeof payload.timestamp_ms === 'number' ? { timestamp_ms: payload.timestamp_ms } : {},
         ...typeof payload.pixel_format === 'string' ? { pixel_format: payload.pixel_format } : {},
+        rects: parseDetectedRects(payload),
       }
       this.markReady()
     }

@@ -150,6 +150,11 @@ describe('capture requests', () => {
     await provider.capture(signal())
     await provider.capture(signal())
     expect(runtime.requests.filter(row => row.method === 'video.start')).toHaveLength(1)
+    expect(runtime.requests.find(row => row.method === 'video.start')?.params).toMatchObject({
+      width: 1536,
+      height: 1152,
+      fps: 30,
+    })
     expect(runtime.requests.filter(row => row.method === 'capture.take')).toHaveLength(2)
   })
 
@@ -198,6 +203,34 @@ describe('capture completion events', () => {
     const { provider } = await rigCompletingWith(event, succeeded({ image_base64: INLINE_BASE64 }))
     const image = await provider.capture(signal())
     expect(Buffer.from(image.data).equals(FAKE_JPEG)).toBe(true)
+  })
+
+  it('returns the left page and pushes the right page for a curved-book still', async () => {
+    const left = Buffer.from('left-page')
+    const right = Buffer.from('right-page')
+    const original = Buffer.from('original-color')
+    const { provider } = await startConnectedRig({
+      intercept: captureScript({
+        poll: stillRunning,
+        afterAccept: (call) => {
+          later(call, 'capture.completed', succeeded({
+            image_base64: original.toString('base64'),
+            assets: [
+              { asset_id: 'o', kind: 'original', base64: original.toString('base64'), width: 6528, height: 4896 },
+              { asset_id: 'l', kind: 'final_left', base64: left.toString('base64'), width: 3257, height: 4881 },
+              { asset_id: 'r', kind: 'final_right', base64: right.toString('base64'), width: 3257, height: 4881 },
+              { asset_id: 't', kind: 'final_thumbnail_left', base64: Buffer.from('thumb').toString('base64') },
+            ],
+          }))
+        },
+      }),
+    })
+    const extra: string[] = []
+    provider.subscribeStills((image) => { extra.push(Buffer.from(image.data).toString()) })
+    const image = await provider.capture(signal())
+    expect(Buffer.from(image.data).toString()).toBe('left-page')
+    expect(image).toMatchObject({ width: 3257, height: 4881, name: 'czur-capture-t1-final_left.jpg' })
+    await vi.waitFor(() => { expect(extra).toEqual(['right-page']) })
   })
 
   it('ignores events without a usable task and for unrelated names', async () => {
@@ -377,6 +410,28 @@ describe('captured image extraction', () => {
     expect(runtime.assetAuthHeaders).toEqual(['Bearer sess'])
   })
 
+  it('downloads both curved-book pages and ignores the task-level original', async () => {
+    const { provider, runtime } = await rigCompletingBuilt('capture.completed', (rig) => {
+      const base = rig.runtime.assetBaseUrl
+      if (base === undefined) throw new Error('asset server missing')
+      return succeeded({
+        image_base64: Buffer.from('not-the-page').toString('base64'),
+        assets: [
+          { asset_id: 'o', kind: 'original', base64: Buffer.from('original').toString('base64') },
+          { asset_id: 'l', kind: 'final_left', url: `${base}/api/assets/t1/l/download`, width: 11, height: 12 },
+          { asset_id: 'r', kind: 'final_right', download_url: `${base}/api/assets/t1/r/download`, width: 13, height: 14 },
+        ],
+      })
+    })
+    const extra: number[] = []
+    provider.subscribeStills((image) => { extra.push(image.width) })
+    const image = await provider.capture(signal())
+    expect(image).toMatchObject({ width: 11, height: 12, name: 'czur-capture-t1-final_left.jpg' })
+    expect(Buffer.from(image.data).equals(FAKE_JPEG)).toBe(true)
+    await vi.waitFor(() => { expect(extra).toEqual([13]) })
+    expect(runtime.assetAuthHeaders).toEqual(['Bearer sess', 'Bearer sess'])
+  })
+
   it.each<{ label: string; payload: Record<string, unknown> }>([
     { label: 'no assets', payload: succeeded({ assets: [] }) },
     { label: 'an asset without a url', payload: succeeded({ assets: [{ asset_id: 'a', kind: 'final' }] }) },
@@ -430,6 +485,22 @@ describe('hardware stills', () => {
     expect(received).toEqual([FAKE_JPEG.byteLength, SENTINEL_LENGTH])
   })
 
+  it('delivers both pages from one hardgrab', async () => {
+    const rig = await startConnectedRig()
+    const received = await stillsAfter(rig, [[
+      'capture.hardgrab',
+      {
+        task_id: 'paged',
+        status: 'succeeded',
+        assets: [
+          { asset_id: 'l', kind: 'final_left', base64: Buffer.from('L').toString('base64') },
+          { asset_id: 'r', kind: 'final_right', base64: Buffer.from('RR').toString('base64') },
+        ],
+      },
+    ]])
+    expect(received.filter(length => length !== SENTINEL_LENGTH)).toEqual([1, 2])
+  })
+
   it('swallows a still that carries no image bytes', async () => {
     const rig = await startConnectedRig()
     const received = await stillsAfter(rig, [
@@ -450,5 +521,288 @@ describe('hardware stills', () => {
     rig.runtime.emitEvent('capture.hardgrab', { task_id: 'late', status: 'succeeded', image_base64: INLINE_BASE64 })
     await pause(50)
     expect(late).toEqual([])
+  })
+
+  it('accepts one hardgrab task and does not take again for that press', async () => {
+    const rig = await startConnectedRig()
+    const received: string[] = []
+    rig.provider.subscribeStills((image) => { received.push(image.name) })
+    rig.runtime.emitEvent('capture.hardgrab_detected', {
+      accepted: true,
+      task: { task_id: 'grab-1', status: 'succeeded', image_base64: INLINE_BASE64 },
+    })
+    rig.runtime.emitEvent('capture.completed', { task_id: 'grab-1', status: 'succeeded', image_base64: INLINE_BASE64 })
+    await vi.waitFor(() => { expect(received).toEqual(['czur-capture-grab-1.jpg']) })
+    await pause(30)
+    expect(received).toEqual(['czur-capture-grab-1.jpg'])
+    expect(rig.runtime.requests.some(row => row.method === 'capture.take')).toBe(false)
+  })
+
+  it('takes one still when a hardware button has no usable task', async () => {
+    const rig = await startConnectedRig()
+    const names: string[] = []
+    rig.provider.subscribeStills((image) => { names.push(image.name) })
+    rig.runtime.emitEvent('capture.hardgrab_detected', { accepted: false, code: 1201, device_id: 'dev-1' })
+    rig.runtime.emitEvent('capture.hardgrab_detected', null)
+    rig.runtime.emitEvent('capture.hardgrab_detected', { accepted: true, device_id: 'dev-1' })
+    rig.runtime.emitEvent('capture.hardgrab_detected', {
+      accepted: true,
+      device_id: 'dev-1',
+      task: { task_id: 'nope', status: 'failed' },
+    })
+    await vi.waitFor(() => { expect(names).toEqual(['czur-capture-task-1.jpg']) })
+    expect(rig.runtime.requests.filter(row => row.method === 'capture.take')).toHaveLength(1)
+  })
+
+  it('takes when a finished hardware-button notice has no still', async () => {
+    const rig = await startConnectedRig()
+    const names: string[] = []
+    rig.provider.subscribeStills((image) => { names.push(image.name) })
+    rig.runtime.emitEvent('capture.hardgrab_detected', {
+      accepted: true,
+      device_id: 'dev-1',
+      task: { task_id: 'grab-bare', status: 'succeeded' },
+    })
+    await vi.waitFor(() => { expect(names).toEqual(['czur-capture-task-1.jpg']) })
+    expect(rig.runtime.requests.filter(row => row.method === 'capture.take')).toHaveLength(1)
+  })
+
+  it('takes when a hardware-button task finishes without a still', async () => {
+    const rig = await startConnectedRig({
+      intercept: (call) => {
+        if (call.method !== 'capture.get') return false
+        call.reply(0, 'ok', {
+          task_id: 'grab-empty',
+          status: 'succeeded',
+          assets: [{ asset_id: 'thumb', kind: 'final_thumbnail' }],
+        })
+        return true
+      },
+    })
+    const names: string[] = []
+    rig.provider.subscribeStills((image) => { names.push(image.name) })
+    rig.runtime.emitEvent('capture.hardgrab_detected', {
+      accepted: true,
+      device_id: 'dev-1',
+      task: { task_id: 'grab-empty', status: 'queued' },
+    })
+    await vi.waitFor(() => { expect(names).toEqual(['czur-capture-task-1.jpg']) })
+    expect(rig.runtime.requests.filter(row => row.method === 'capture.take')).toHaveLength(1)
+  })
+
+  it('does not take for a hardware button after the session has started closing', async () => {
+    const rig = await startConnectedRig({
+      intercept: call => call.method === 'capture.get',
+    })
+    rig.provider.subscribeStills(() => undefined)
+    rig.runtime.emitEvent('capture.hardgrab_detected', {
+      accepted: true,
+      task: { task_id: 'grab-closed', status: 'queued' },
+    })
+    await rig.provider.close()
+    await pause(30)
+    expect(rig.runtime.requests.some(row => row.method === 'capture.take')).toBe(false)
+  })
+
+  it('polls a queued hardgrab once and does not call capture.take for it', async () => {
+    const rig = await startConnectedRig()
+    const received: string[] = []
+    rig.provider.subscribeStills((image) => { received.push(image.name) })
+    rig.runtime.emitEvent('capture.hardgrab_detected', {
+      accepted: true,
+      task_id: 'grab-queued',
+      task: { task_id: 'grab-queued', status: 'queued' },
+    })
+    await vi.waitFor(() => { expect(received).toEqual(['czur-capture-grab-queued.jpg']) })
+    expect(rig.runtime.requests.some(row => row.method === 'capture.take')).toBe(false)
+    expect(rig.runtime.requests.some(row => row.method === 'capture.get' && row.params.task_id === 'grab-queued')).toBe(true)
+  })
+
+  it('drops a queued hardgrab when the session closes before the task finishes', async () => {
+    const rig = await startConnectedRig({
+      intercept: call => call.method === 'capture.get',
+    })
+    rig.provider.subscribeStills(() => undefined)
+    rig.runtime.emitEvent('capture.hardgrab_detected', {
+      accepted: true,
+      task: { task_id: 'grab-closed', status: 'queued' },
+    })
+    await rig.provider.close()
+  })
+
+  it('ignores a second notice for a hardgrab already being followed or already saved', async () => {
+    const rig = await startConnectedRig({
+      intercept: call => call.method === 'capture.get',
+    })
+    const queued = { accepted: true, task: { task_id: 'grab-twice', status: 'queued' } }
+    rig.runtime.emitEvent('capture.hardgrab_detected', queued)
+    rig.runtime.emitEvent('capture.hardgrab_detected', queued)
+    let saved = false
+    rig.provider.subscribeStills(() => { saved = true })
+    rig.runtime.emitEvent('capture.hardgrab', { task_id: 'grab-saved', status: 'succeeded', image_base64: INLINE_BASE64 })
+    rig.runtime.emitEvent('capture.hardgrab', { task_id: 'grab-saved', status: 'succeeded', image_base64: INLINE_BASE64 })
+    await vi.waitFor(() => { expect(saved).toBe(true) })
+    rig.runtime.emitEvent('capture.hardgrab_detected', {
+      accepted: true,
+      task: { task_id: 'grab-saved', status: 'queued' },
+    })
+    Object.assign(rig.provider, { command: undefined })
+    rig.runtime.emitEvent('capture.hardgrab_detected', {
+      accepted: true,
+      task: { task_id: 'grab-closed', status: 'queued' },
+    })
+  })
+})
+
+describe('page-turn capture', () => {
+  it('takes one still for this device and skips an overlapping or too-soon turn', async () => {
+    const rig = await startConnectedRig()
+    const names: string[] = []
+    rig.provider.subscribeStills((image) => { names.push(image.name) })
+    rig.runtime.emitEvent('capture.turn_detected', { device_id: 'other' })
+    rig.runtime.emitEvent('capture.turn_detected', { device_id: 'dev-1', auto_capture: false })
+    rig.runtime.emitEvent('capture.turn_detected', { device_id: 'dev-1', auto_capture: false })
+    await vi.waitFor(() => { expect(names).toEqual(['czur-capture-task-1.jpg']) })
+    const takes = (): number => rig.runtime.requests.filter(row => row.method === 'capture.take').length
+    expect(takes()).toBe(1)
+    rig.runtime.emitEvent('capture.turn_detected', { device_id: 'dev-1' })
+    await pause(40)
+    expect(takes()).toBe(1)
+    expect(names).toEqual(['czur-capture-task-1.jpg'])
+  })
+
+  it('takes when the event omits a device id and ignores a turn with nobody listening', async () => {
+    const quiet = await startConnectedRig()
+    quiet.runtime.emitEvent('capture.turn_detected', null)
+    await pause(30)
+    expect(quiet.runtime.requests.some(row => row.method === 'capture.take')).toBe(false)
+    const rig = await startConnectedRig()
+    const names: string[] = []
+    rig.provider.subscribeStills((image) => { names.push(image.name) })
+    rig.runtime.emitEvent('capture.turn_detected', null)
+    await vi.waitFor(() => { expect(names).toEqual(['czur-capture-task-1.jpg']) })
+  })
+
+  it('ignores a page turn when the command connection or device is already gone', async () => {
+    const missingCommand = await startConnectedRig()
+    missingCommand.provider.subscribeStills(() => undefined)
+    Object.assign(missingCommand.provider, { command: undefined })
+    missingCommand.runtime.emitEvent('capture.turn_detected', { device_id: 'dev-1' })
+    const missingDevice = await startConnectedRig()
+    missingDevice.provider.subscribeStills(() => undefined)
+    Object.assign(missingDevice.provider, { deviceId: undefined })
+    missingDevice.runtime.emitEvent('capture.turn_detected', {})
+    await pause(20)
+    expect(missingCommand.runtime.requests.some(row => row.method === 'capture.take')).toBe(false)
+    expect(missingDevice.runtime.requests.some(row => row.method === 'capture.take')).toBe(false)
+  })
+
+  it('does not take for a page turn while a shutter capture is in progress', async () => {
+    let release: () => void = () => {}
+    const gate = new Promise<void>((resolve) => { release = resolve })
+    const rig = await startConnectedRig({
+      intercept: (call) => {
+        if (call.method !== 'capture.take' || call.count !== 1) return false
+        void gate.then(() => {
+          call.reply(0, 'ok', { accepted: true, task_id: 'held', status: 'queued' })
+          call.emit('capture.completed', {
+            task_id: 'held',
+            status: 'succeeded',
+            image_base64: INLINE_BASE64,
+          })
+        })
+        return true
+      },
+    })
+    const pending = rig.provider.capture(signal())
+    await vi.waitFor(() => { expect(rig.provider.snapshot().phase).toBe('capturing') })
+    rig.runtime.emitEvent('capture.turn_detected', { device_id: 'dev-1' })
+    release()
+    await pending
+    expect(rig.runtime.requests.filter(row => row.method === 'capture.take')).toHaveLength(1)
+  })
+
+  it('keeps device_missing when the device leaves during a page-turn capture', async () => {
+    let release: () => void = () => {}
+    const gate = new Promise<void>((resolve) => { release = resolve })
+    const rig = await startConnectedRig({
+      intercept: (call) => {
+        if (call.method !== 'capture.take') return false
+        void gate.then(() => { call.reply(1500, 'gone') })
+        return true
+      },
+    })
+    rig.provider.subscribeStills(() => undefined)
+    rig.runtime.emitEvent('capture.turn_detected', { device_id: 'dev-1' })
+    await vi.waitFor(() => { expect(rig.provider.snapshot().phase).toBe('capturing') })
+    rig.runtime.emitEvent('device.removed', { device_id: 'dev-1' })
+    await vi.waitFor(() => { expect(rig.provider.snapshot().phase).toBe('device_missing') })
+    release()
+    await pause(30)
+    expect(rig.provider.snapshot().phase).toBe('device_missing')
+  })
+
+  it('leaves the connection ready when a page-turn capture fails', async () => {
+    const rig = await startConnectedRig({
+      intercept: (call) => {
+        if (call.method !== 'capture.take') return false
+        call.reply(1500, 'lens cap on')
+        return true
+      },
+    })
+    rig.provider.subscribeStills(() => undefined)
+    rig.runtime.emitEvent('capture.turn_detected', { device_id: 'dev-1' })
+    await vi.waitFor(() => {
+      expect(rig.runtime.requests.filter(row => row.method === 'capture.take')).toHaveLength(1)
+    })
+    await vi.waitFor(() => { expect(rig.provider.snapshot().phase).toBe('ready') })
+  })
+
+  it('does not take for a page turn when autoCapture is off', async () => {
+    const rig = await startConnectedRig({}, { autoCapture: false })
+    rig.provider.subscribeStills(() => undefined)
+    rig.runtime.emitEvent('capture.turn_detected', { device_id: 'dev-1' })
+    await pause(30)
+    expect(rig.runtime.requests.some(row => row.method === 'capture.take')).toBe(false)
+    expect(rig.runtime.requests.some(row => row.method === 'capture.set_turn_detect')).toBe(false)
+  })
+})
+
+describe('capture profile', () => {
+  it('sends the selected page and color treatment on video start and capture.take', async () => {
+    const rig = await startConnectedRig()
+    await rig.provider.setCaptureProfile({ pageProcessing: 'curved_book', colorMode: 'black_white' })
+    const lifetime = new AbortController()
+    for await (const frame of rig.provider.preview(lifetime.signal)) {
+      expect(frame.mimeType).toBe('image/jpeg')
+      lifetime.abort()
+    }
+    await rig.provider.capture(signal(), { pageProcessing: 'keep_original', colorMode: 'grayscale' })
+    const start = rig.runtime.requests.find(row => row.method === 'video.start')
+    const take = rig.runtime.requests.find(row => row.method === 'capture.take')
+    expect(start?.params.profile).toMatchObject({ capture: { page_processing: 'curved_book', color_mode: 'black_white' } })
+    expect(take?.params.profile).toMatchObject({ capture: { page_processing: 'keep_original', color_mode: 'grayscale' } })
+  })
+
+  it('updates a running preview with video.set_profile', async () => {
+    const rig = await startConnectedRig()
+    const lifetime = new AbortController()
+    for await (const frame of rig.provider.preview(lifetime.signal)) {
+      expect(frame.mimeType).toBe('image/jpeg')
+      lifetime.abort()
+    }
+    await rig.provider.setCaptureProfile({
+      pageProcessing: 'selected_area',
+      colorMode: 'ancient',
+      selection: { x: 1, y: 2, width: 3, height: 4, sourceWidth: 8, sourceHeight: 9 },
+    })
+    const update = rig.runtime.requests.find(row => row.method === 'video.set_profile')
+    expect(update?.params.profile).toMatchObject({
+      capture: {
+        page_processing: 'selected_area',
+        color_mode: 'ancient',
+        selected_area: { source: { width: 8, height: 9 } },
+      },
+    })
   })
 })

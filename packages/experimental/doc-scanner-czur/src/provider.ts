@@ -5,6 +5,8 @@ import {
   ConnectionStateStore,
   isPreviewPhase,
   sleepUnlessAborted,
+  DEFAULT_DOC_SCANNER_PROFILE,
+  type DocScannerCaptureProfile,
   type DocScannerImageBytes,
   type DocScannerPreviewFrame,
   type DocScannerProvider,
@@ -15,10 +17,11 @@ import {
   asCaptureTask,
   CZUR_DEVICE_BUSY,
   CZUR_RATE_LIMITED,
-  DEFAULT_CAPTURE_PROFILE,
+  czurCaptureProfile,
   deviceOpened,
   parseDeviceList,
-  pickCaptureAsset,
+  pickCaptureAssets,
+  type CzurCaptureAsset,
   type CzurCaptureTask,
   type CzurDeviceSummary,
   type CzurEvent,
@@ -31,6 +34,12 @@ const PROVIDER_ID = brandString<DocScannerProviderId>('czur')
 const DEVICE_BUSY_RETRY_MS = 200
 /** Real CZUR page-process pipelines often exceed 20s before `capture.completed`. */
 const CAPTURE_TIMEOUT_MS = 90_000
+/** Minimum gap between capture.take calls on one device. The Runtime rejects a closer call with 1004. */
+const CAPTURE_INTERVAL_MS = 1_500
+/** Preview mode the device exposes as a full 4:3 frame. 1280×720 crops that frame to 16:9. */
+const PREVIEW_WIDTH = 1536
+const PREVIEW_HEIGHT = 1152
+const PREVIEW_FPS = 30
 
 /** Construction options for the CZUR provider. */
 export interface CzurDocScannerProviderOptions {
@@ -76,6 +85,14 @@ export class CzurDocScannerProvider extends ConnectionStateStore implements DocS
     reject: (error: Error) => void
   }>()
   private readonly stillListeners = new Set<(image: DocScannerImageBytes) => void>()
+  private readonly deliveredStills = new Set<string>()
+  private readonly deliveringStills = new Set<string>()
+  private activeProfile: DocScannerCaptureProfile = DEFAULT_DOC_SCANNER_PROFILE
+  /** `Date.now()` when the last `capture.take` was started, including a hardware-triggered take. */
+  private lastCaptureAt = 0
+  private turnTaking = false
+  /** True only after connect reaches ready, and false from the start of teardown. */
+  private hardwareArmed = false
 
   constructor(options: CzurDocScannerProviderOptions) {
     super()
@@ -164,15 +181,18 @@ export class CzurDocScannerProvider extends ConnectionStateStore implements DocS
       }
       if (this.options.autoCapture !== false) {
         try {
-          await command.request('device.set_turn_detect', {
+          await command.request('capture.set_turn_detect', {
             device_id: selected.device_id,
             enabled: true,
+            auto_capture: false,
+            scan_device_type: 0,
           })
         } catch (error) {
           // Turn-detect is best-effort; soft-fail keeps capture.take usable.
           void error
         }
       }
+      this.hardwareArmed = true
       this.setState({
         phase: 'ready',
         providerId: this.info.id,
@@ -187,19 +207,23 @@ export class CzurDocScannerProvider extends ConnectionStateStore implements DocS
     }
   }
 
-  async capture(signal: AbortSignal): Promise<DocScannerImageBytes> {
+  async capture(signal: AbortSignal, profile?: DocScannerCaptureProfile): Promise<DocScannerImageBytes> {
     signal.throwIfAborted()
     if (this.state.phase !== 'ready' || this.command === undefined || this.deviceId === undefined) {
       throw new DocScannerError('CZUR scanner is not ready', 'DOC_SCANNER_NOT_READY')
     }
     // Aura X / SDK Open finish capture.take only while a video stream is live
     // on this Command WS connection.
+    if (profile !== undefined) this.activeProfile = profile
     await this.ensureVideo(this.command, this.deviceId, signal)
     const prior = this.state
     this.setState({ ...prior, phase: 'capturing' })
+    this.lastCaptureAt = Date.now()
     try {
       const task = await this.takeCapture(signal)
-      return await this.imageFromTask(task, signal)
+      const images = await this.imagesFromTask(task, signal)
+      this.pushStills(images.slice(1))
+      return images[0]
     } finally {
       const phase = this.snapshot().phase
       // oxlint-disable-next-line typescript/no-unnecessary-condition -- close() can clear the device while capture awaits
@@ -226,6 +250,19 @@ export class CzurDocScannerProvider extends ConnectionStateStore implements DocS
     }
   }
 
+  /**
+   * Store the capture profile and push it to a running video stream.
+   * @param profile - page treatment, color treatment, and optional selection.
+   */
+  async setCaptureProfile(profile: DocScannerCaptureProfile): Promise<void> {
+    this.activeProfile = profile
+    if (this.command === undefined || this.deviceId === undefined || this.video === undefined) return
+    await this.command.request('video.set_profile', {
+      device_id: this.deviceId,
+      profile: czurCaptureProfile(profile),
+    })
+  }
+
   async close(): Promise<void> {
     await this.teardownSession()
     this.setState({ phase: 'disconnected' })
@@ -248,6 +285,14 @@ export class CzurDocScannerProvider extends ConnectionStateStore implements DocS
       }
       return
     }
+    if (event.event === 'capture.turn_detected') {
+      this.captureFromTurn(event.payload)
+      return
+    }
+    if (event.event === 'capture.hardgrab_detected') {
+      this.captureFromHardgrab(event.payload)
+      return
+    }
     if (
       event.event === 'capture.completed'
       || event.event === 'capture.failed'
@@ -268,18 +313,128 @@ export class CzurDocScannerProvider extends ConnectionStateStore implements DocS
       }
       // Hardware hardgrab / turn-detect still with no matching capture.take waiter.
       if (event.event !== 'capture.failed' && task.status !== 'failed') {
-        void this.pushStillFromTask(task)
+        void this.deliverStill(task)
       }
     }
   }
 
-  private async pushStillFromTask(task: CzurCaptureTask): Promise<void> {
-    if (this.stillListeners.size === 0) return
+  /**
+   * Import a hardware-button still, or take one on this connection when the event has none.
+   * An accepted task is followed and is not shot again. A rejected grab, a grab with no task,
+   * a failed task, or a finished task with no still uses the page-turn shutter.
+   * @param payload - `capture.hardgrab_detected` payload.
+   */
+  private captureFromHardgrab(payload: unknown): void {
+    const record = payload !== null && typeof payload === 'object'
+      ? payload as Record<string, unknown>
+      : undefined
+    if (record?.accepted === false) {
+      this.captureFromTurn(payload)
+      return
+    }
+    const task = asCaptureTask(payload)
+    if (task === undefined || task.status === 'failed') {
+      this.captureFromTurn(payload)
+      return
+    }
+    if (task.status === 'succeeded') {
+      void this.deliverStill(task).then((delivered) => {
+        if (!delivered) this.captureFromTurn(payload)
+      })
+      return
+    }
+    this.followHardgrab(task.task_id, payload)
+  }
+
+  /**
+   * Poll one hardware-button task, then take on this connection if it yields no still.
+   * @param taskId - task from `capture.hardgrab_detected`.
+   * @param payload - original event payload, used when this connection must take.
+   */
+  private followHardgrab(taskId: string, payload: unknown): void {
+    if (this.captureWaiters.has(taskId) || this.deliveredStills.has(taskId) || this.deliveringStills.has(taskId)) return
+    const command = this.command
+    if (command === undefined) {
+      this.captureFromTurn(payload)
+      return
+    }
+    void this.waitForCapture(command, taskId, AbortSignal.timeout(CAPTURE_TIMEOUT_MS))
+      .then(async (task) => {
+        const delivered = await this.deliverStill(task)
+        if (!delivered) this.captureFromTurn(payload)
+      })
+      .catch((error: unknown) => {
+        void error
+        this.captureFromTurn(payload)
+      })
+  }
+
+  /**
+   * Take one still for a page turn or an unusable hardware-button notice on this connection.
+   * The Runtime keeps turn `auto_capture` false, so that event has no image.
+   * @param payload - event payload. A foreign `device_id` is ignored; a missing id is this device.
+   */
+  private captureFromTurn(payload: unknown): void {
+    if (!this.hardwareArmed || this.options.autoCapture === false) return
+    const record = payload !== null && typeof payload === 'object'
+      ? payload as Record<string, unknown>
+      : undefined
+    const eventDevice = typeof record?.device_id === 'string' ? record.device_id : undefined
+    if (eventDevice !== undefined && eventDevice !== this.deviceId) return
+    if (this.turnTaking || this.state.phase !== 'ready') return
+    if (Date.now() - this.lastCaptureAt < CAPTURE_INTERVAL_MS) return
+    const command = this.command
+    const deviceId = this.deviceId
+    if (this.stillListeners.size === 0 || command === undefined || deviceId === undefined) return
+    void this.takeFromTurn(command, deviceId)
+  }
+
+  /**
+   * Run one page-turn `capture.take` and push every page to still listeners.
+   * @param command - Command connection that owns the device.
+   * @param deviceId - device that reported the turn.
+   */
+  private async takeFromTurn(command: CzurCommandClient, deviceId: string): Promise<void> {
+    this.turnTaking = true
+    this.lastCaptureAt = Date.now()
+    const prior = this.state
+    this.setState({ ...prior, phase: 'capturing' })
     try {
-      const image = await this.imageFromTask(task, AbortSignal.timeout(30_000))
-      for (const listener of this.stillListeners) listener(image)
+      const signal = AbortSignal.timeout(CAPTURE_TIMEOUT_MS)
+      await this.ensureVideo(command, deviceId, signal)
+      const task = await this.takeCapture(signal)
+      // The completion event can also reach subscribeStills once the waiter is gone.
+      this.deliveredStills.add(task.task_id)
+      const images = await this.imagesFromTask(task, signal)
+      this.pushStills(images)
     } catch (error) {
       void error
+    } finally {
+      this.turnTaking = false
+      const phase = this.snapshot().phase
+      if (this.deviceId !== undefined && phase === 'capturing') this.setState(prior)
+    }
+  }
+
+  /**
+   * Push one finished task to still listeners.
+   * @param task - capture snapshot that may still need an asset download.
+   * @returns true when the still was pushed or is already being saved.
+   */
+  private async deliverStill(task: CzurCaptureTask): Promise<boolean> {
+    if (this.stillListeners.size === 0) return false
+    if (this.deliveredStills.has(task.task_id) || this.deliveringStills.has(task.task_id)) return true
+    this.deliveringStills.add(task.task_id)
+    try {
+      const images = await this.imagesFromTask(task, AbortSignal.timeout(30_000))
+      this.deliveredStills.add(task.task_id)
+      this.pushStills(images)
+      return true
+    } catch (error) {
+      void error
+      return false
+    } finally {
+      this.deliveringStills.delete(task.task_id)
     }
   }
 
@@ -296,7 +451,7 @@ export class CzurDocScannerProvider extends ConnectionStateStore implements DocS
       try {
         const data = await command.request('capture.take', {
           device_id: deviceId,
-          profile: DEFAULT_CAPTURE_PROFILE,
+          profile: czurCaptureProfile(this.activeProfile),
           include_base64: true,
           timeout_ms: CAPTURE_TIMEOUT_MS,
         }, CAPTURE_TIMEOUT_MS + 5_000)
@@ -381,24 +536,49 @@ export class CzurDocScannerProvider extends ConnectionStateStore implements DocS
     throw new Error(`CZUR capture timed out for task ${taskId}`)
   }
 
-  private async imageFromTask(task: CzurCaptureTask, signal: AbortSignal): Promise<DocScannerImageBytes> {
-    const inline = task.image_base64 ?? task.data_base64
-      ?? pickCaptureAsset(task.assets)?.base64
-      ?? pickCaptureAsset(task.assets)?.data_base64
-    if (inline !== undefined && inline.length > 0) {
-      const data = Buffer.from(inline, 'base64')
-      const asset = pickCaptureAsset(task.assets)
-      return {
-        data: new Uint8Array(data),
-        mimeType: mimeFromContentType(asset?.content_type),
-        width: asset?.width ?? 1,
-        height: asset?.height ?? 1,
-        name: `czur-capture-${task.task_id}.jpg`,
-      }
+  private pushStills(images: readonly DocScannerImageBytes[]): void {
+    for (const image of images) {
+      for (const listener of this.stillListeners) listener(image)
     }
-    const asset = pickCaptureAsset(task.assets)
-    const url = asset?.download_url ?? asset?.url
-    if (asset === undefined || url === undefined) {
+  }
+
+  private async imagesFromTask(
+    task: CzurCaptureTask,
+    signal: AbortSignal,
+  ): Promise<[DocScannerImageBytes, ...DocScannerImageBytes[]]> {
+    const assets = pickCaptureAssets(task.assets)
+    if (assets.length === 0) {
+      const inline = task.image_base64 ?? task.data_base64
+      if (inline !== undefined && inline.length > 0) {
+        return [this.imageFromBase64(task.task_id, inline, undefined, false)]
+      }
+      throw new DocScannerError('CZUR capture completed without image bytes', 'DOC_SCANNER_ATTACH_FAILED')
+    }
+    const paged = assets.length > 1
+    const [first, ...rest] = assets
+    const images: [DocScannerImageBytes, ...DocScannerImageBytes[]] = [
+      await this.imageFromAsset(task, first, paged, signal),
+    ]
+    for (const asset of rest) images.push(await this.imageFromAsset(task, asset, paged, signal))
+    return images
+  }
+
+  private async imageFromAsset(
+    task: CzurCaptureTask,
+    asset: CzurCaptureAsset,
+    paged: boolean,
+    signal: AbortSignal,
+  ): Promise<DocScannerImageBytes> {
+    const inline = asset.base64 ?? asset.data_base64
+    if (inline !== undefined && inline.length > 0) {
+      return this.imageFromBase64(task.task_id, inline, asset, paged)
+    }
+    const taskInline = task.image_base64 ?? task.data_base64
+    if (!paged && taskInline !== undefined && taskInline.length > 0) {
+      return this.imageFromBase64(task.task_id, taskInline, asset, false)
+    }
+    const url = asset.download_url ?? asset.url
+    if (url === undefined) {
       throw new DocScannerError('CZUR capture completed without image bytes', 'DOC_SCANNER_ATTACH_FAILED')
     }
     const sessionToken = this.sessionToken
@@ -428,8 +608,28 @@ export class CzurDocScannerProvider extends ConnectionStateStore implements DocS
       mimeType: mimeFromContentType(asset.content_type),
       width: asset.width ?? 1,
       height: asset.height ?? 1,
-      name: `czur-capture-${task.task_id}.jpg`,
+      name: this.stillName(task.task_id, asset.kind, paged),
     }
+  }
+
+  private imageFromBase64(
+    taskId: string,
+    inline: string,
+    asset: CzurCaptureAsset | undefined,
+    paged: boolean,
+  ): DocScannerImageBytes {
+    return {
+      data: new Uint8Array(Buffer.from(inline, 'base64')),
+      mimeType: mimeFromContentType(asset?.content_type),
+      width: asset?.width ?? 1,
+      height: asset?.height ?? 1,
+      name: this.stillName(taskId, asset?.kind, paged),
+    }
+  }
+
+  private stillName(taskId: string, kind: string | undefined, paged: boolean): string {
+    const page = paged && kind !== undefined ? `-${kind}` : ''
+    return `czur-capture-${taskId}${page}.jpg`
   }
 
   private async ensureVideo(command: CzurCommandClient, deviceId: string, signal: AbortSignal): Promise<CzurVideoClient> {
@@ -447,13 +647,7 @@ export class CzurDocScannerProvider extends ConnectionStateStore implements DocS
   private async startVideo(command: CzurCommandClient, deviceId: string, signal: AbortSignal): Promise<CzurVideoClient> {
     let data: unknown
     try {
-      data = await command.request('video.start', {
-        device_id: deviceId,
-        width: 1280,
-        height: 720,
-        fps: 10,
-        pixel_format: 'mjpeg',
-      })
+      data = await command.request('video.start', this.videoStartParams(deviceId))
     } catch (error) {
       // Another connection may still own the stream; stop and retry once on this session.
       if (!(error instanceof CzurCommandError) || !/already streaming/i.test(error.message)) {
@@ -464,13 +658,7 @@ export class CzurDocScannerProvider extends ConnectionStateStore implements DocS
       } catch (stopError) {
         void stopError
       }
-      data = await command.request('video.start', {
-        device_id: deviceId,
-        width: 1280,
-        height: 720,
-        fps: 10,
-        pixel_format: 'mjpeg',
-      })
+      data = await command.request('video.start', this.videoStartParams(deviceId))
     }
     const record = data !== null && typeof data === 'object' ? data as Record<string, unknown> : undefined
     const streamId = typeof record?.stream_id === 'string' ? record.stream_id : undefined
@@ -493,6 +681,17 @@ export class CzurDocScannerProvider extends ConnectionStateStore implements DocS
     return video
   }
 
+  private videoStartParams(deviceId: string): Record<string, unknown> {
+    return {
+      device_id: deviceId,
+      width: PREVIEW_WIDTH,
+      height: PREVIEW_HEIGHT,
+      fps: PREVIEW_FPS,
+      pixel_format: 'mjpeg',
+      profile: czurCaptureProfile(this.activeProfile),
+    }
+  }
+
   private async stopVideo(): Promise<void> {
     const streamId = this.streamId
     const deviceId = this.deviceId
@@ -511,6 +710,7 @@ export class CzurDocScannerProvider extends ConnectionStateStore implements DocS
   }
 
   private async teardownSession(): Promise<void> {
+    this.hardwareArmed = false
     for (const [id, waiter] of this.captureWaiters) {
       this.captureWaiters.delete(id)
       waiter.reject(new Error('CZUR session closed'))

@@ -117,15 +117,15 @@ describe('device.open replies', () => {
 describe('turn detect', () => {
   it('is not requested when autoCapture is false and is requested by default', async () => {
     const off = await startConnectedRig({}, { autoCapture: false })
-    expect(off.runtime.requests.map(row => row.method)).not.toContain('device.set_turn_detect')
+    expect(off.runtime.requests.map(row => row.method)).not.toContain('capture.set_turn_detect')
     const on = await startConnectedRig()
-    expect(on.runtime.requests.map(row => row.method)).toContain('device.set_turn_detect')
+    expect(on.runtime.requests.map(row => row.method)).toContain('capture.set_turn_detect')
   })
 
   it('does not block ready when the Runtime rejects it', async () => {
     const { provider } = await startConnectedRig({
       intercept: (call) => {
-        if (call.method !== 'device.set_turn_detect') return false
+        if (call.method !== 'capture.set_turn_detect') return false
         call.reply(7, 'unsupported')
         return true
       },

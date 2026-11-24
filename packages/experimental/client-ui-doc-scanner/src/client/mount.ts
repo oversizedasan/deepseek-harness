@@ -21,7 +21,7 @@ import { formatFileMention } from '@deepseek-ai/dsh-file-reference/grammar'
 import { fileAddressFor } from '@deepseek-ai/dsh-util-workspace-path'
 import type { TypertRemoteContribution } from '@deepseek-ai/dsh-typert-protocol'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import type { DocScannerCaptureResult } from '@deepseek-ai/dsh-api-doc-scanner/types'
+import type { DocScannerCaptureProfile, DocScannerCaptureResult } from '@deepseek-ai/dsh-api-doc-scanner/types'
 import {
   capturesArchiveDirsFromDraft,
   isArchiveImageName,
@@ -161,6 +161,19 @@ function registerUi(ctx: Context): void {
     if (!result.ok) throw result.error
   }
 
+  let captureProfile: DocScannerCaptureProfile = {
+    pageProcessing: 'single_page',
+    colorMode: 'auto_optimize',
+  }
+
+  const setCaptureProfile = async (profile: DocScannerCaptureProfile): Promise<void> => {
+    captureProfile = profile
+    const phase = readiness.state.getSnapshot().snapshot?.connection.phase
+    if (phase !== 'ready' && phase !== 'capturing') return
+    const result = await ctx.remote.docScanner.setCaptureProfile({ profile })
+    if (!result.ok) throw result.error
+  }
+
   const capture = async (signal: AbortSignal) => {
     const current = sessionUi.getSnapshot()
     if (current.captures.length >= DOC_SCANNER_MAX_IMAGES_PER_MESSAGE) {
@@ -171,6 +184,7 @@ function registerUi(ctx: Context): void {
       : { sessionId: current.archiveSessionId }
     const result = await ctx.remote.docScanner.capture({
       batchId: current.batchId,
+      profile: captureProfile,
       ...sessionScoped,
     }, signal)
     if (result.ok) {
@@ -523,6 +537,7 @@ function registerUi(ctx: Context): void {
     },
     connect,
     capture,
+    setCaptureProfile,
     close,
     openPreview,
     removeCapture,

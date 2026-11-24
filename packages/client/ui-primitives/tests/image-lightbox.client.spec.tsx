@@ -3,7 +3,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render } from '@testing-library/react'
 import { useState } from 'react'
-import { ImageLightbox } from '../src/ImageLightbox.tsx'
+import { focusLightboxControl, ImageLightbox } from '../src/ImageLightbox.tsx'
 import { Menu } from '../src/Menu.tsx'
 
 afterEach(cleanup)
@@ -20,6 +20,11 @@ describe('ImageLightbox', () => {
     const close = view.getByRole('button', { name: '关闭原图预览' })
     expect(document.activeElement).toBe(close)
     fireEvent.keyDown(window, { key: 'a' })
+    fireEvent.keyDown(window, { key: 'ArrowLeft' })
+    fireEvent.keyDown(window, { key: 'ArrowRight' })
+    fireEvent.keyDown(window, { key: 'Tab' })
+    fireEvent.keyDown(window, { key: 'Tab', shiftKey: true })
+    expect(document.activeElement).toBe(close)
     expect(onClose).not.toHaveBeenCalled()
     const outerKey = vi.fn()
     document.body.addEventListener('keydown', outerKey)
@@ -46,6 +51,58 @@ describe('ImageLightbox', () => {
     }
   })
 
+  it('switches images from the controls, the arrow keys, and Tab', () => {
+    const onPrevious = vi.fn()
+    const onNext = vi.fn()
+    const view = render(
+      <ImageLightbox
+        src="blob:second"
+        alt="第二张"
+        labels={labels}
+        navigation={{ previous: '上一张', next: '下一张', position: '2 / 3', onPrevious, onNext }}
+        onClose={vi.fn()}
+      />,
+    )
+    expect(view.getByText('2 / 3')).toBeTruthy()
+    fireEvent.click(view.getByRole('button', { name: '下一张' }))
+    fireEvent.click(view.getByRole('button', { name: '上一张' }))
+    fireEvent.keyDown(window, { key: 'ArrowRight' })
+    fireEvent.keyDown(window, { key: 'ArrowLeft' })
+    expect(onNext).toHaveBeenCalledTimes(2)
+    expect(onPrevious).toHaveBeenCalledTimes(2)
+    const close = view.getByRole('button', { name: '关闭原图预览' })
+    const previous = view.getByRole('button', { name: '上一张' })
+    const next = view.getByRole('button', { name: '下一张' })
+    close.focus()
+    fireEvent.keyDown(window, { key: 'Tab' })
+    expect(document.activeElement).toBe(previous)
+    fireEvent.keyDown(window, { key: 'Tab' })
+    expect(document.activeElement).toBe(next)
+    fireEvent.keyDown(window, { key: 'Tab', shiftKey: true })
+    expect(document.activeElement).toBe(previous)
+    const outside = document.createElement('div')
+    outside.tabIndex = 0
+    document.body.append(outside)
+    outside.focus()
+    fireEvent.keyDown(window, { key: 'Tab' })
+    outside.remove()
+    expect(document.activeElement).toBe(close)
+  })
+
+  it('omits the position caption when navigation does not supply one', () => {
+    const view = render(
+      <ImageLightbox
+        src="blob:second"
+        alt="第二张"
+        labels={labels}
+        navigation={{ previous: '上一张', next: '下一张', onPrevious: vi.fn(), onNext: vi.fn() }}
+        onClose={vi.fn()}
+      />,
+    )
+    expect(view.queryByText('2 / 3')).toBeNull()
+    expect(view.getByRole('button', { name: '下一张' })).toBeTruthy()
+  })
+
   it('closes on a mask press but not on a press over the image', () => {
     const onClose = vi.fn()
     const view = render(<ImageLightbox src="blob:original" alt="原图" labels={labels} onClose={onClose} />)
@@ -54,6 +111,39 @@ describe('ImageLightbox', () => {
     const mask = document.querySelector('[aria-hidden="true"]') as HTMLElement
     fireEvent.mouseDown(mask)
     expect(onClose).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('focusLightboxControl', () => {
+  function button(): { node: HTMLButtonElement; focused: ReturnType<typeof vi.fn> } {
+    const node = document.createElement('button')
+    const focused = vi.fn()
+    node.focus = focused
+    return { node, focused }
+  }
+
+  it('does nothing for an empty list and focuses the only control', () => {
+    focusLightboxControl([null, null], null, false)
+    const only = button()
+    focusLightboxControl([only.node], null, false)
+    focusLightboxControl([only.node], only.node, true)
+    expect(only.focused).toHaveBeenCalledTimes(2)
+  })
+
+  it('cycles forward and backward, and starts at the first control when focus is elsewhere', () => {
+    const close = button()
+    const previous = button()
+    const next = button()
+    const outside = document.createElement('div')
+    focusLightboxControl([close.node, previous.node, next.node], close.node, false)
+    expect(previous.focused).toHaveBeenCalledOnce()
+    focusLightboxControl([close.node, previous.node, next.node], close.node, true)
+    expect(next.focused).toHaveBeenCalledOnce()
+    focusLightboxControl([close.node, previous.node, next.node], outside, false)
+    expect(close.focused).toHaveBeenCalledOnce()
+    const stranger = button()
+    focusLightboxControl([close.node, previous.node, next.node], stranger.node, false)
+    expect(close.focused).toHaveBeenCalledTimes(2)
   })
 })
 

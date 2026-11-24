@@ -17,6 +17,9 @@ export const zh = {
   openBatchInFiles: '在文件中查看',
   lightboxDialog: '本批照片预览',
   lightboxClose: '关闭预览',
+  lightboxPrevious: '上一张',
+  lightboxNext: '下一张',
+  lightboxPosition: '{current} / {total}',
   czurHint: '支持用高拍仪按键连续采集；不满意的照片可在本批中删除',
   statusDisconnected: '高拍仪未连接',
   statusConnecting: '正在连接高拍仪…',
@@ -52,6 +55,7 @@ export const zh = {
   folderChipLabel: '本批扫描 · {when}（{count} 张）',
   folderChipWhenToday: '今天 {time}',
   folderChipWhenOther: '{month}月{day}日 {time}',
+  detectSuccess: '识别成功',
 } as const
 
 /** Keys owned by this dictionary namespace. */
@@ -70,6 +74,9 @@ export const en: { [K in DocScannerKey]: string } = {
   openBatchInFiles: 'Show in files',
   lightboxDialog: 'Batch photo preview',
   lightboxClose: 'Close preview',
+  lightboxPrevious: 'Previous photo',
+  lightboxNext: 'Next photo',
+  lightboxPosition: '{current} / {total}',
   czurHint: 'Use the scanner button for continuous capture; remove unclear photos from this batch',
   statusDisconnected: 'Document camera disconnected',
   statusConnecting: 'Connecting document camera…',
@@ -105,6 +112,7 @@ export const en: { [K in DocScannerKey]: string } = {
   folderChipLabel: 'Batch scan · {when} ({count})',
   folderChipWhenToday: 'Today {time}',
   folderChipWhenOther: '{month}/{day} {time}',
+  detectSuccess: 'Recognized',
 }
 
 /** Japanese dictionary; currently the English copy. */

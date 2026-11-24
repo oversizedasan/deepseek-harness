@@ -4,9 +4,12 @@ import {
   asCaptureTask,
   asCzurEvent,
   asCzurResponse,
+  czurCaptureProfile,
   deviceOpened,
+  parseDetectedRects,
   parseDeviceList,
   pickCaptureAsset,
+  pickCaptureAssets,
 } from '../src/protocol.ts'
 
 describe('asCzurResponse', () => {
@@ -120,6 +123,14 @@ describe('pickCaptureAsset', () => {
     expect(pickCaptureAsset([other, original])).toBe(original)
     expect(pickCaptureAsset([other])).toBe(other)
   })
+
+  it('keeps both curved-book pages and skips thumbnails', () => {
+    const left = { asset_id: 'l', kind: 'final_left' }
+    const right = { asset_id: 'r', kind: 'final_right' }
+    const thumb = { asset_id: 't', kind: 'final_thumbnail_left' }
+    expect(pickCaptureAssets([original, thumb, right, left])).toEqual([right, left])
+    expect(pickCaptureAsset([thumb, original])).toBe(original)
+  })
 })
 
 describe('asCaptureTask', () => {
@@ -199,5 +210,147 @@ describe('asCaptureTask', () => {
 
   it('takes fields from the nested task when the top-level id is also present', () => {
     expect(asCaptureTask({ task_id: 'top', task: { status: 'failed' } })).toEqual({ task_id: 'top', status: 'failed' })
+  })
+})
+
+describe('czurCaptureProfile', () => {
+  it.each([
+    'auto_optimize',
+    'color_enhance',
+    'black_white',
+    'grayscale',
+    'white_paper_seal',
+    'certificate',
+    'ancient',
+    'no_optimize',
+  ] as const)('keeps color mode %s on a single page and asks for detection boxes', (colorMode) => {
+    const profile = czurCaptureProfile({ pageProcessing: 'single_page', colorMode })
+    expect(profile.capture).toMatchObject({
+      page_processing: 'single_page',
+      color_mode: colorMode,
+      single_page: { realtime_detect_rects: true, smart_black_edge_optimize: true },
+    })
+    expect(profile.output).toMatchObject({ format: 'jpg', quality: 90 })
+  })
+
+  it('uses the curved-book defaults and does not request detection boxes', () => {
+    expect(czurCaptureProfile({ pageProcessing: 'curved_book', colorMode: 'auto_optimize' }).capture).toMatchObject({
+      page_processing: 'curved_book',
+      curved_book: { remove_finger: { enabled: true }, smart_paging: true },
+    })
+  })
+
+  it('keeps the original page without extra treatment', () => {
+    expect(czurCaptureProfile({ pageProcessing: 'keep_original', colorMode: 'no_optimize' }).capture).toEqual({
+      page_processing: 'keep_original',
+      color_mode: 'no_optimize',
+    })
+  })
+
+  it('writes a selected area as four frame-pixel corners', () => {
+    const profile = czurCaptureProfile({
+      pageProcessing: 'selected_area',
+      colorMode: 'certificate',
+      selection: { x: 10, y: 20, width: 30, height: 40, sourceWidth: 1280, sourceHeight: 720 },
+    })
+    expect(profile.capture).toMatchObject({
+      page_processing: 'selected_area',
+      color_mode: 'certificate',
+      selected_area: {
+        points: {
+          left_top: { x: 10, y: 20 },
+          right_top: { x: 40, y: 20 },
+          right_down: { x: 40, y: 60 },
+          left_down: { x: 10, y: 60 },
+        },
+        source: { width: 1280, height: 720 },
+      },
+    })
+  })
+
+  it('falls back to single-page detection when a selection has no rectangle', () => {
+    expect(czurCaptureProfile({ pageProcessing: 'selected_area', colorMode: 'auto_optimize' }).capture).toMatchObject({
+      page_processing: 'single_page',
+      single_page: { realtime_detect_rects: true },
+    })
+  })
+})
+
+describe('parseDetectedRects', () => {
+  it('reads boxes from the payload shapes the Runtime may send', () => {
+    expect(parseDetectedRects({
+      detected_rects: [
+        { x: 1, y: 2, width: 3, height: 4 },
+        { left: 5, top: 6, width: 7, height: 8 },
+        { left: 1, top: 2, right: 4, bottom: 6 },
+        { points: { left_top: { x: 0, y: 1 }, right_down: { x: 2, y: 4 } } },
+        { left_top: [0, 0], right_top: [10, 0], right_down: [10, 6], left_down: [0, 6] },
+        { x: 1, y: 1, width: 0, height: 2 },
+        'nope',
+      ],
+    })).toEqual([
+      { x: 1, y: 2, width: 3, height: 4 },
+      { x: 5, y: 6, width: 7, height: 8 },
+      { x: 1, y: 2, width: 3, height: 4 },
+      { x: 0, y: 1, width: 2, height: 3 },
+      {
+        x: 0,
+        y: 0,
+        width: 10,
+        height: 6,
+        corners: {
+          leftTop: { x: 0, y: 0 },
+          rightTop: { x: 10, y: 0 },
+          rightDown: { x: 10, y: 6 },
+          leftDown: { x: 0, y: 6 },
+        },
+      },
+    ])
+  })
+
+  it('returns nothing when the field is missing or not a list', () => {
+    expect(parseDetectedRects({})).toEqual([])
+    expect(parseDetectedRects({ detected_rects: { x: 1 } })).toEqual([])
+    expect(parseDetectedRects(null)).toEqual([])
+  })
+
+  it('accepts a bare list and drops incomplete points, edges, and non-finite numbers', () => {
+    expect(parseDetectedRects([{ x: 1, y: 2, width: 3, height: 4 }])).toEqual([{ x: 1, y: 2, width: 3, height: 4 }])
+    expect(parseDetectedRects([
+      { points: { left_top: { x: 1 }, right_down: null }, x: 1, y: 2, width: 3, height: 4 },
+      { left_top: [1], x: 2, y: 3, width: 4, height: 5 },
+      { points: { left_top: 'no' } },
+      { left: 1, top: 2, right: 5, bottom: 6 },
+      { x: 1, y: 2, height: 4 },
+      { y: 2, width: 3, height: 4 },
+      { x: 1, top: 2, width: 3 },
+      { x: Number.NaN, y: 2, width: 3, height: 4 },
+      { points: { left_top: { x: 1, y: 1 }, right_down: { x: 1, y: 1 } } },
+      { left_top: [0, 0], right_top: [1, 0] },
+      { left_top: [1, 1], right_top: [2, 1], right_down: [1, 1] },
+      { left_top: [0, 0], right_top: [0, 0], right_down: [0, 0], left_down: [0, 0] },
+      {
+        left_top: [0, 10],
+        right_top: [100, 0],
+        right_down: [90, 80],
+        left_down: [5, 90],
+      },
+    ])).toEqual([
+      { x: 1, y: 2, width: 3, height: 4 },
+      { x: 2, y: 3, width: 4, height: 5 },
+      { x: 1, y: 2, width: 4, height: 4 },
+      {
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 90,
+        corners: {
+          leftTop: { x: 0, y: 10 },
+          rightTop: { x: 100, y: 0 },
+          rightDown: { x: 90, y: 80 },
+          leftDown: { x: 5, y: 90 },
+        },
+      },
+    ])
   })
 })

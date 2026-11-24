@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import DocScanner, {
+  type DocScannerCaptureProfile,
   type DocScannerImageBytes,
   type DocScannerPreviewFrame,
 } from '../src/index.ts'
@@ -32,6 +33,7 @@ describe('DocScanner', () => {
       expect(result.mimeType).toBe('image/jpeg')
       expect(result.dataBase64.length).toBeGreaterThan(0)
       expect(result.attachmentId).toBeUndefined()
+      await ctx.docScanner.setCaptureProfile({ pageProcessing: 'single_page', colorMode: 'auto_optimize' })
       const frames: DocScannerPreviewFrame[] = []
       const lifetime = new AbortController()
       for await (const frame of ctx.docScanner.preview(lifetime.signal)) {
@@ -43,6 +45,34 @@ describe('DocScanner', () => {
       await ctx.docScanner.close()
       expect(ctx.docScanner.snapshot().connection.phase).toBe('disconnected')
       await dispose()
+    } finally {
+      await ctx.parallel('dispose')
+    }
+  })
+
+  it('forwards a capture profile and ignores providers that do not store one', async () => {
+    const ctx = new Context()
+    await ctx.plugin(DocScanner)
+    try {
+      const base = fakeProvider()
+      const seen: unknown[] = []
+      ctx.docScanner.register({
+        ...base,
+        async capture(signal, profile) {
+          seen.push(profile)
+          return await base.capture(signal)
+        },
+        async setCaptureProfile(profile: DocScannerCaptureProfile) {
+          seen.push(profile)
+        },
+      })
+      await ctx.docScanner.connect(undefined, AbortSignal.timeout(5_000))
+      const stored = { pageProcessing: 'keep_original' as const, colorMode: 'grayscale' as const }
+      const taken = { pageProcessing: 'single_page' as const, colorMode: 'ancient' as const }
+      await ctx.docScanner.setCaptureProfile(stored)
+      await ctx.docScanner.capture(AbortSignal.timeout(5_000), { profile: taken })
+      expect(seen).toEqual([stored, taken])
+      await ctx.docScanner.close()
     } finally {
       await ctx.parallel('dispose')
     }

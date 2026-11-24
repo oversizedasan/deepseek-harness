@@ -146,7 +146,11 @@ export async function startFakeRuntime(options: FakeRuntimeOptions = {}): Promis
           reply(0, 'ok', { closed: true })
           break
         case 'device.set_turn_detect':
-          reply(0, 'ok', { enabled: params.enabled !== false, device_id: params.device_id })
+        case 'capture.set_turn_detect':
+          reply(0, 'ok', { enabled: params.enabled !== false, auto_capture: params.auto_capture === true, device_id: params.device_id })
+          break
+        case 'video.set_profile':
+          reply(0, 'ok', { updated: true })
           break
         case 'video.start':
           reply(0, 'ok', {
@@ -329,7 +333,12 @@ export async function startFakeRuntime(options: FakeRuntimeOptions = {}): Promis
           data_base64: FAKE_JPEG.toString('base64'),
         }],
       }
-      broadcast('capture.hardgrab', payload)
+      broadcast('capture.hardgrab_detected', {
+        accepted: true,
+        device_id: payload.device_id,
+        task_id,
+        task: payload,
+      })
     },
     close: async () => {
       for (const socket of [...commandSockets, ...videoSockets]) socket.terminate()

@@ -26,7 +26,7 @@ Hosts the CZUR SDK Open `DocScannerProvider` on the Host: Command WS for session
 
 Present in the [bundle](../doc-scanner-bundle/README.md). The default `cordis.patch.yml` keeps this row `disabled: true` (Mock demo). For hardware, use `cordis.czur.patch.yml` (Mock off, CZUR on) and set `CZUR_API_KEY` (or Config `credentialRef`).
 
-Config fields: `commandWsUrl` (default `wss://sdk-runtime.localhost:18090`), optional `videoWsBaseUrl` (derived from Command when omitted), optional `preferredDeviceId`, optional `credentialRef` (default ambient name `CZUR_API_KEY`), `allowInsecureTls` (default `false`; the bundled patches set `true` because the local Runtime uses a self-signed certificate), `autoCapture` (default `true`, calls `device.set_turn_detect` after open).
+Config fields: `commandWsUrl` (default `wss://sdk-runtime.localhost:18090`), optional `videoWsBaseUrl` (derived from Command when omitted), optional `preferredDeviceId`, optional `credentialRef` (default ambient name `CZUR_API_KEY`), `allowInsecureTls` (default `false`; the bundled patches set `true` because the local Runtime uses a self-signed certificate), `autoCapture` (default `true`; after open calls `capture.set_turn_detect` with `enabled: true`, `auto_capture: false`, and `scan_device_type: 0`. The Runtime does not take a photo for a page turn, so this connection calls `capture.take`).
 
 Hardware setup, the launch command, and failure symptoms: [practice guide](../../../docs/user/develop/practice/doc-scanner.md#phase-2-czur-hardware).
 
@@ -40,12 +40,12 @@ Implemented `DocScannerProvider` that:
 1. Opens Command WS to `commandWsUrl` and calls `auth.create_session`.
 2. Calls `device.list` / `device.get`; maps empty lists to `device_missing`.
 3. Calls `device.open` until `opened: true`, then reports `ready`.
-4. When `autoCapture` is true (default), calls `device.set_turn_detect` after open.
+4. When `autoCapture` is true (default), calls `capture.set_turn_detect` after open with `enabled: true`, `auto_capture: false`, and `scan_device_type: 0`. A `capture.turn_detected` for this device starts `capture.take` on this connection when no capture is in progress and 1500ms have passed since the last one; the still reaches this batch through `subscribeStills`.
 5. Ensures `video.start` on this connection, then calls `capture.take` with a profile; waits for `capture.completed` / `capture.failed` or polls `capture.get`.
 6. Prefers inline base64; otherwise downloads Asset HTTPS with `Authorization: Bearer` from `auth.create_session` `session_token`.
-7. Hardgrab / unmatched `capture.completed` stills emit through `subscribeStills`.
+7. A hardware-button event that already carries this connection's task is followed with `capture.get` and does not call `capture.take` again. When that event has no task, the task fails, or the finished task has no still, this connection calls `capture.take` with the same spacing as a page turn. The device gives a hardgrab task to one connection that has called `device.open`, so close other SDK clients, including the demo site, while this app is connected. Unmatched `capture.completed` stills also emit through `subscribeStills`.
 8. Handles `device.removed`, `DeviceBusy` (1201), and the 1500ms capture interval / `RateLimited` (1004).
-9. Maps Video WS / `video.start` frames into `preview()` (JPEG) while the device is ready or capturing.
+9. Maps Video WS frames into `preview()` (JPEG). `video.start` requests 1536×1152 at 30fps while the device is ready or capturing.
 10. Registers on `ctx.docScanner` from `apply` and releases the device on dispose.
 
 Official references: [device API](https://open.czur.com/docs/reference/sdk-open/device-api), [capture API](https://open.czur.com/docs/reference/sdk-open/capture-api), [device and video guide](https://open.czur.com/docs/guide/sdk-open/device-video).
@@ -74,5 +74,5 @@ No direct effect.
 <a id="known-limitations-and-deferred-work"></a>
 
 - Default bundle patch keeps CZUR disabled so CI and keyless demos stay on Mock.
-- Advanced capture profiles (curved book, selected area) are not exposed in Config; turn detect is the boolean `autoCapture` only.
+- Advanced capture profiles (curved book, selected area) stay on the Host profile API. The teacher preview uses single page and auto optimize. Turn detect is the boolean `autoCapture` only.
 - Teaching workflows that consume `attachmentId` (grading overlays, multi-page trays) remain deferred.

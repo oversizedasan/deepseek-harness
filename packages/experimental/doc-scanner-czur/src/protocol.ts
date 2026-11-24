@@ -1,4 +1,5 @@
 /** CZUR SDK Open Command WS JSON envelopes and capture asset helpers. */
+import type { DocScannerCaptureProfile, DocScannerFrameRect } from '@deepseek-ai/dsh-doc-scanner'
 
 /** Outbound Command WS request. */
 export interface CzurRequest {
@@ -31,31 +32,148 @@ export const CZUR_RATE_LIMITED = 1004
 /** Device is mid-shutter. */
 export const CZUR_DEVICE_BUSY = 1201
 
-/** Minimal single-page JPG profile for DocScanner still capture. */
-export const DEFAULT_CAPTURE_PROFILE = {
-  profile_version: 'capture.profile.v1',
-  revision: 1,
-  capture: {
-    page_processing: 'single_page',
-    color_mode: 'auto_optimize',
-    single_page: {
-      realtime_detect_rects: false,
+/**
+ * Build the CZUR `CaptureProfile` for one scanner profile.
+ * Single-page profiles request realtime detection boxes. A missing selection
+ * keeps `selected_area` from being sent and falls back to single-page detection.
+ * @param profile - page treatment, color treatment, and optional selection.
+ * @returns the profile object passed to `video.start`, `video.set_profile`, and `capture.take`.
+ */
+export function czurCaptureProfile(profile: DocScannerCaptureProfile): Record<string, unknown> {
+  const pageProcessing = profile.pageProcessing === 'selected_area' && profile.selection === undefined
+    ? 'single_page'
+    : profile.pageProcessing
+  const capture: Record<string, unknown> = {
+    page_processing: pageProcessing,
+    color_mode: profile.colorMode,
+  }
+  if (pageProcessing === 'single_page') {
+    capture.single_page = {
+      realtime_detect_rects: true,
       auto_rotate: false,
       smart_black_edge_optimize: true,
       multi_target_paging: false,
+    }
+  }
+  if (pageProcessing === 'curved_book') {
+    capture.curved_book = {
+      remove_finger: { enabled: true, finger_type: 'with_sleeve' },
+      smart_paging: true,
+    }
+  }
+  if (pageProcessing === 'selected_area' && profile.selection !== undefined) {
+    const { x, y, width, height, sourceWidth, sourceHeight } = profile.selection
+    capture.selected_area = {
+      points: {
+        left_top: { x, y },
+        right_top: { x: x + width, y },
+        right_down: { x: x + width, y: y + height },
+        left_down: { x, y: y + height },
+      },
+      source: { width: sourceWidth, height: sourceHeight },
+    }
+  }
+  return {
+    profile_version: 'capture.profile.v1',
+    revision: 1,
+    capture,
+    output: {
+      format: 'jpg',
+      quality: 90,
+      thumbnails: {
+        original: false,
+        page_processed: false,
+        color_processed: false,
+        final: true,
+      },
     },
-  },
-  output: {
-    format: 'jpg',
-    quality: 90,
-    thumbnails: {
-      original: false,
-      page_processed: false,
-      color_processed: false,
-      final: true,
-    },
-  },
-} as const
+  }
+}
+
+/**
+ * Read detection boxes from a `stream.frame_meta` payload.
+ * Accepts `{x,y,width,height}`, `{left,top,width,height}`, `{left,top,right,bottom}`,
+ * and `left_top` / `right_top` / `right_down` / `left_down` as `{x,y}` or `[x,y]`,
+ * either on the rect or under `points`. Four corners are kept on `corners`;
+ * two corners become an axis-aligned box only.
+ * @param value - `detected_rects` field, or the whole payload.
+ * @returns boxes with positive width and height; an empty list when none parse.
+ */
+export function parseDetectedRects(value: unknown): DocScannerFrameRect[] {
+  const list = Array.isArray(value)
+    ? value
+    : value !== null && typeof value === 'object' && Array.isArray((value as { detected_rects?: unknown }).detected_rects)
+      ? (value as { detected_rects: unknown[] }).detected_rects
+      : []
+  const rects: DocScannerFrameRect[] = []
+  for (const entry of list) {
+    const rect = oneDetectedRect(entry)
+    if (rect !== undefined) rects.push(rect)
+  }
+  return rects
+}
+
+function oneDetectedRect(entry: unknown): DocScannerFrameRect | undefined {
+  if (entry === null || typeof entry !== 'object') return undefined
+  const record = entry as Record<string, unknown>
+  const points = record.points
+  const box = points !== null && typeof points === 'object' ? points as Record<string, unknown> : record
+  const quad = quadOf(box)
+  if (quad !== undefined) return quad
+  const topLeft = pointOf(box.left_top)
+  const bottomRight = pointOf(box.right_down)
+  if (topLeft !== undefined && bottomRight !== undefined) {
+    return positiveRect(topLeft.x, topLeft.y, bottomRight.x - topLeft.x, bottomRight.y - topLeft.y)
+  }
+  const x = numberOf(record.x) ?? numberOf(record.left)
+  const y = numberOf(record.y) ?? numberOf(record.top)
+  if (x === undefined || y === undefined) return undefined
+  const right = numberOf(record.right)
+  const bottom = numberOf(record.bottom)
+  const width = numberOf(record.width) ?? (right === undefined ? undefined : right - x)
+  const height = numberOf(record.height) ?? (bottom === undefined ? undefined : bottom - y)
+  if (width === undefined || height === undefined) return undefined
+  return positiveRect(x, y, width, height)
+}
+
+function pointOf(value: unknown): { x: number; y: number } | undefined {
+  if (Array.isArray(value)) {
+    const x = numberOf(value[0])
+    const y = numberOf(value[1])
+    if (x === undefined || y === undefined) return undefined
+    return { x, y }
+  }
+  if (value === null || typeof value !== 'object') return undefined
+  const record = value as Record<string, unknown>
+  const x = numberOf(record.x)
+  const y = numberOf(record.y)
+  if (x === undefined || y === undefined) return undefined
+  return { x, y }
+}
+
+function numberOf(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
+}
+
+function quadOf(box: Record<string, unknown>): DocScannerFrameRect | undefined {
+  const leftTop = pointOf(box.left_top)
+  const rightTop = pointOf(box.right_top)
+  const rightDown = pointOf(box.right_down)
+  const leftDown = pointOf(box.left_down)
+  if (leftTop === undefined || rightTop === undefined || rightDown === undefined || leftDown === undefined) return undefined
+  const x = Math.min(leftTop.x, rightTop.x, rightDown.x, leftDown.x)
+  const y = Math.min(leftTop.y, rightTop.y, rightDown.y, leftDown.y)
+  const width = Math.max(leftTop.x, rightTop.x, rightDown.x, leftDown.x) - x
+  const height = Math.max(leftTop.y, rightTop.y, rightDown.y, leftDown.y) - y
+  const rect = positiveRect(x, y, width, height)
+  if (rect === undefined) return undefined
+  return { ...rect, corners: { leftTop, rightTop, rightDown, leftDown } }
+}
+
+function positiveRect(x: number, y: number, width: number, height: number): DocScannerFrameRect | undefined {
+  if (width <= 0 || height <= 0) return undefined
+  return { x, y, width, height }
+}
 
 /** One entry from `device.list`. */
 export interface CzurDeviceSummary {
@@ -172,15 +290,37 @@ export function deviceOpened(data: unknown): boolean {
 }
 
 /**
- * Prefer final still asset, else original.
+ * Whether this asset is a finished page, including curved-book `final_left` / `final_right`.
+ * Thumbnails such as `final_thumbnail_left` are not pages.
+ * @param kind - asset kind from the capture task.
+ * @returns `true` for `final` and `final_*` page kinds.
+ */
+function isFinalPage(kind: string): boolean {
+  return kind === 'final' || (kind.startsWith('final_') && !kind.startsWith('final_thumbnail'))
+}
+
+/**
+ * Finished page assets for one capture, in task order.
+ * A curved-book capture with smart paging has `final_left` and `final_right` and no plain `final`.
+ * When no finished page is present, the list is the `original` asset, else the first asset.
  * @param assets - capture task assets.
- * @returns the `final` asset, else the `original` asset, else the first asset; `undefined` when there are none.
+ * @returns the pages to keep; an empty list when there are no assets.
+ */
+export function pickCaptureAssets(assets: readonly CzurCaptureAsset[] | undefined): CzurCaptureAsset[] {
+  if (assets === undefined || assets.length === 0) return []
+  const pages = assets.filter(asset => isFinalPage(asset.kind))
+  if (pages.length > 0) return pages
+  const original = assets.find(asset => asset.kind === 'original')
+  return [original ?? assets[0]]
+}
+
+/**
+ * Prefer a finished page asset, else original.
+ * @param assets - capture task assets.
+ * @returns the first {@link pickCaptureAssets} entry; `undefined` when there are none.
  */
 export function pickCaptureAsset(assets: readonly CzurCaptureAsset[] | undefined): CzurCaptureAsset | undefined {
-  if (assets === undefined || assets.length === 0) return undefined
-  return assets.find(asset => asset.kind === 'final')
-    ?? assets.find(asset => asset.kind === 'original')
-    ?? assets[0]
+  return pickCaptureAssets(assets)[0]
 }
 
 /**

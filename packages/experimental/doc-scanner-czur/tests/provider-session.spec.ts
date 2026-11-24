@@ -178,7 +178,7 @@ describe('device removal', () => {
     rig.runtime.emitEvent('device.removed', { device_id: 'dev-1' })
     await vi.waitFor(() => { expect(rig.provider.snapshot().phase).toBe('device_missing') })
     rig.runtime.emitEvent('device.removed', undefined)
-    sentinel()
+    rig.runtime.emitEvent('hardgrab.completed', { task_id: 's2', status: 'succeeded', image_base64: INLINE_BASE64 })
     await vi.waitFor(() => { expect(stills).toHaveLength(2) })
     expect(rig.provider.snapshot().phase).toBe('device_missing')
   })

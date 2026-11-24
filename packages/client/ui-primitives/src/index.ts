@@ -134,7 +134,7 @@ export {
 } from './plugin-artwork.tsx'
 export { GuideArtworkBrowser, GuideArtworkFiles } from './guide-artwork.tsx'
 export { ImageLightbox } from './ImageLightbox.tsx'
-export type { ImageLightboxLabels } from './ImageLightbox.tsx'
+export type { ImageLightboxLabels, ImageLightboxNavigation } from './ImageLightbox.tsx'
 
 export { QuotePreview } from './QuotePreview.tsx'
 export type { QuotePreviewProps, QuotePreviewRemoval, QuoteSummary } from './QuotePreview.tsx'

@@ -67,6 +67,70 @@ export interface DocScannerCaptureResult {
   readonly workspacePath?: string
 }
 
+/** Page treatment applied to one still and, for single page, to the live viewfinder. */
+export type DocScannerPageProcessing = 'single_page' | 'curved_book' | 'keep_original' | 'selected_area'
+
+/** Color treatment applied when a still is processed. */
+export type DocScannerColorMode =
+  | 'auto_optimize'
+  | 'color_enhance'
+  | 'black_white'
+  | 'grayscale'
+  | 'white_paper_seal'
+  | 'certificate'
+  | 'ancient'
+  | 'no_optimize'
+
+/** One point in viewfinder pixels. */
+export interface DocScannerFramePoint {
+  readonly x: number
+  readonly y: number
+}
+
+/**
+ * Four corners of a detected page, in viewfinder pixels.
+ * Order matches the CZUR point names: top-left, top-right, bottom-right, bottom-left.
+ */
+export interface DocScannerFrameCorners {
+  readonly leftTop: DocScannerFramePoint
+  readonly rightTop: DocScannerFramePoint
+  readonly rightDown: DocScannerFramePoint
+  readonly leftDown: DocScannerFramePoint
+}
+
+/**
+ * Axis-aligned rectangle in viewfinder pixels.
+ * `x` and `y` are the top-left corner.
+ * `corners`, when present, is the page outline; the rectangle is its bounding box.
+ */
+export interface DocScannerFrameRect {
+  readonly x: number
+  readonly y: number
+  readonly width: number
+  readonly height: number
+  readonly corners?: DocScannerFrameCorners
+}
+
+/** Capture treatment shared by the live profile and `capture.take`. */
+export interface DocScannerCaptureProfile {
+  readonly pageProcessing: DocScannerPageProcessing
+  readonly colorMode: DocScannerColorMode
+  /**
+   * Selection in viewfinder pixels. Required for `selected_area`.
+   * `sourceWidth` and `sourceHeight` are the frame size those pixels refer to.
+   */
+  readonly selection?: DocScannerFrameRect & {
+    readonly sourceWidth: number
+    readonly sourceHeight: number
+  }
+}
+
+/** Single-page capture with automatic color optimization and no selection. */
+export const DEFAULT_DOC_SCANNER_PROFILE: DocScannerCaptureProfile = {
+  pageProcessing: 'single_page',
+  colorMode: 'auto_optimize',
+}
+
 /** Options for one still capture or Host batch archival. */
 export interface DocScannerCaptureOptions {
   /**
@@ -79,6 +143,8 @@ export interface DocScannerCaptureOptions {
    * Omission archives under `process.cwd()` (tests / no-session fallback).
    */
   readonly sessionId?: string
+  /** Treatment for this still. Omission keeps the provider's current profile. */
+  readonly profile?: DocScannerCaptureProfile
 }
 
 /**
@@ -92,6 +158,8 @@ export interface DocScannerPreviewFrame {
   readonly height: number
   /** Host monotonic timestamp in milliseconds when the frame was produced. */
   readonly ts?: number
+  /** Detection boxes in this frame's pixel space. Empty or absent when detection is off. */
+  readonly rects?: readonly DocScannerFrameRect[]
 }
 
 /** Wire-safe preview frame after base64 encoding for Typert streams. */
@@ -101,6 +169,8 @@ export interface DocScannerPreviewFrameWire {
   readonly width: number
   readonly height: number
   readonly ts?: number
+  /** Detection boxes in this frame's pixel space. */
+  readonly rects?: readonly DocScannerFrameRect[]
 }
 
 /** One hardware or mock backend owned by a contributing fiber. */
@@ -115,7 +185,12 @@ export interface DocScannerProvider {
    * Capture one still image while the provider reports ready.
    * @param signal - caller cancellation.
    */
-  capture(signal: AbortSignal): Promise<DocScannerImageBytes>
+  capture(signal: AbortSignal, profile?: DocScannerCaptureProfile): Promise<DocScannerImageBytes>
+  /**
+   * Replace the live capture profile. Hardware providers apply it to the running video stream.
+   * @param profile - page treatment, color treatment, and optional selection.
+   */
+  setCaptureProfile?(profile: DocScannerCaptureProfile): Promise<void>
   /**
    * Stream viewfinder frames while the provider is ready or capturing.
    * Ends when the signal aborts or the device leaves a previewable phase.

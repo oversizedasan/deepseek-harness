@@ -86,6 +86,17 @@ describe('CzurCommandClient.connect', () => {
     expect(socket?.readyState).toBe(WebSocket.CLOSED)
   })
 
+  it('still rejects the handshake when closing the socket throws', async () => {
+    FakeSocket.script = {
+      autoOpen: false,
+      onClose: () => { throw new Error('already connecting') },
+    }
+    const controller = new AbortController()
+    const pending = newClient().connect(controller.signal)
+    controller.abort(new Error('caller cancelled'))
+    await expect(pending).rejects.toThrow('caller cancelled')
+  })
+
   it('closes the socket when the signal aborts while the socket is being constructed', async () => {
     const controller = new AbortController()
     FakeSocket.script = {

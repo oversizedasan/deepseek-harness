@@ -109,6 +109,23 @@ describe('CzurVideoClient frame pairing', () => {
     socket.pushJson({ event: 'stream.frame_meta', width: 320, height: 200 })
     socket.push(FAKE_JPEG, true)
     expect((await second).value).toMatchObject({ width: 320, height: 200 })
+    expect((await second).value.rects).toBeUndefined()
+    client.close()
+  })
+
+  it('keeps detection boxes from frame_meta with the JPEG that follows', async () => {
+    const { client, socket } = await connectedClient()
+    const next = waitForFrame(client, new AbortController().signal)
+    socket.pushJson({
+      event: 'stream.frame_meta',
+      payload: {
+        width: 640,
+        height: 480,
+        detected_rects: [{ x: 8, y: 9, width: 10, height: 11 }],
+      },
+    })
+    socket.push(FAKE_JPEG, true)
+    expect((await next).value.rects).toEqual([{ x: 8, y: 9, width: 10, height: 11 }])
     client.close()
   })
 

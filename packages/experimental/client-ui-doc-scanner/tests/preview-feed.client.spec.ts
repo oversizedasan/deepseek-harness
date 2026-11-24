@@ -8,7 +8,8 @@ import { createRemoteContext, flush, leakyStore, readinessIn } from './fixtures.
 
 const FRAME = { mimeType: 'image/jpeg' as const, width: 2, height: 2, dataBase64: 'AAEC' }
 const FRAME_SRC = 'data:image/jpeg;base64,AAEC'
-const IDLE = { src: null, error: null, streaming: false }
+const IDLE = { src: null, error: null, streaming: false, rects: [], frameWidth: 0, frameHeight: 0 }
+const LIVE = { rects: [] as const, frameWidth: 2, frameHeight: 2 }
 
 function mount(initial: DocScannerReadiness = readinessIn(null)) {
   const { ctx, remote } = createRemoteContext()
@@ -28,14 +29,14 @@ describe('observePreviewFeed', () => {
 
   it('streams frames as data URLs while ready and accepts each one', async () => {
     const { feed, remote } = mount(readinessIn('ready'))
-    expect(feed.state.getSnapshot()).toEqual({ src: null, error: null, streaming: true })
+    expect(feed.state.getSnapshot()).toEqual({ ...IDLE, streaming: true })
     const [stream] = remote.streams
     expect(stream?.options.name).toBe('Document scanner preview')
     expect(stream?.options.open(new AbortController().signal)).toBe('preview:false')
 
     stream?.push(FRAME)
     await flush()
-    expect(feed.state.getSnapshot()).toEqual({ src: FRAME_SRC, error: null, streaming: true })
+    expect(feed.state.getSnapshot()).toEqual({ src: FRAME_SRC, error: null, streaming: true, ...LIVE })
     stream?.push({ ...FRAME, mimeType: 'image/png' })
     await flush()
     expect(feed.state.getSnapshot().src).toBe('data:image/png;base64,AAEC')
@@ -65,12 +66,12 @@ describe('observePreviewFeed', () => {
     remote.streams[0]?.push(FRAME)
     remote.streams[0]?.end()
     await flush()
-    expect(feed.state.getSnapshot()).toEqual({ src: FRAME_SRC, error: null, streaming: false })
+    expect(feed.state.getSnapshot()).toEqual({ src: FRAME_SRC, error: null, streaming: false, ...LIVE })
 
     readiness.set(readinessIn('capturing'))
     await flush()
     expect(remote.streams).toHaveLength(2)
-    expect(feed.state.getSnapshot()).toEqual({ src: FRAME_SRC, error: null, streaming: true })
+    expect(feed.state.getSnapshot()).toEqual({ src: FRAME_SRC, error: null, streaming: true, ...LIVE })
   })
 
   it('classifies a normal end as a carrier loss and reports a carrier failure without dropping the frame', async () => {
@@ -83,10 +84,10 @@ describe('observePreviewFeed', () => {
     expect(ended?.message).toBe('Document scanner preview stream ended')
 
     stream?.options.carrierFailed?.(new RemoteStreamCarrierError('socket closed'))
-    expect(feed.state.getSnapshot()).toEqual({ src: FRAME_SRC, error: 'socket closed', streaming: false })
+    expect(feed.state.getSnapshot()).toEqual({ src: FRAME_SRC, error: 'socket closed', streaming: false, ...LIVE })
     stream?.push(FRAME)
     await flush()
-    expect(feed.state.getSnapshot()).toEqual({ src: FRAME_SRC, error: null, streaming: true })
+    expect(feed.state.getSnapshot()).toEqual({ src: FRAME_SRC, error: null, streaming: true, ...LIVE })
   })
 
   it.each([
@@ -98,7 +99,7 @@ describe('observePreviewFeed', () => {
     await flush()
     remote.streams[0]?.fail(thrown)
     await flush()
-    expect(feed.state.getSnapshot()).toEqual({ src: FRAME_SRC, error: message, streaming: false })
+    expect(feed.state.getSnapshot()).toEqual({ src: FRAME_SRC, error: message, streaming: false, ...LIVE })
   })
 
   it('ignores a carrier failure from a replaced stream', async () => {

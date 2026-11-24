@@ -5,6 +5,7 @@ import { archiveCapture } from './archive.ts'
 import { DocScannerError } from './error.ts'
 import type {
   DocScannerCaptureOptions,
+  DocScannerCaptureProfile,
   DocScannerCaptureResult,
   DocScannerConnectionState,
   DocScannerImageBytes,
@@ -15,6 +16,7 @@ import type {
 } from './types.ts'
 
 export type * from './types.ts'
+export { DEFAULT_DOC_SCANNER_PROFILE } from './types.ts'
 export { DocScannerError } from './error.ts'
 export { archiveCapture, DOC_SCANNER_CAPTURES_DIR } from './archive.ts'
 export { ConnectionStateStore, isPreviewPhase, sleepUnlessAborted } from './provider-support.ts'
@@ -216,9 +218,18 @@ export default class DocScanner extends Service {
       throw new DocScannerError('Document scanner is not ready to capture', 'DOC_SCANNER_NOT_READY')
     }
     const combined = AbortSignal.any([signal, this.lifetime.signal])
-    const image = await registration.provider.capture(combined)
+    const image = await registration.provider.capture(combined, options.profile)
     combined.throwIfAborted()
     return await this.persistImage(image, options)
+  }
+
+  /**
+   * Replace the active provider's capture profile. Providers without live video store it for the next still.
+   * @param profile - page treatment, color treatment, and optional selection.
+   */
+  async setCaptureProfile(profile: DocScannerCaptureProfile): Promise<void> {
+    const registration = this.selected()
+    await registration.provider.setCaptureProfile?.(profile)
   }
 
   /**

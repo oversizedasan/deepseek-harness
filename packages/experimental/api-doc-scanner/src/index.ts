@@ -9,7 +9,7 @@ import type {
   DocScannerProviderId,
   DocScannerSnapshot,
 } from '@deepseek-ai/dsh-doc-scanner'
-import type { DocScannerCaptureRequest, DocScannerConnectRequest } from './types.ts'
+import type { DocScannerCaptureRequest, DocScannerConnectRequest, DocScannerProfileRequest } from './types.ts'
 
 export type * from './types.ts'
 
@@ -79,6 +79,20 @@ export default class DocScannerController extends TypertRemoteService {
   }
 
   /**
+   * Replace the live capture profile without reconnecting.
+   * @param request - page treatment, color treatment, and optional selection.
+   * @returns after the provider stores the profile and updates a running video stream.
+   */
+  @Remote
+  async setCaptureProfile(request: DocScannerProfileRequest): Promise<void> {
+    try {
+      await this.ctx.docScanner.setCaptureProfile(request.profile)
+    } catch (error) {
+      throw mapError(error)
+    }
+  }
+
+  /**
    * Stream hardware-pushed stills (hardgrab / auto-capture) into the Client tray.
    * @param request - optional batch id and Session for workspace archival.
    * @param signal - Client observation lifetime.
@@ -110,6 +124,7 @@ export default class DocScannerController extends TypertRemoteService {
           width: frame.width,
           height: frame.height,
           ...frame.ts === undefined ? {} : { ts: frame.ts },
+          ...frame.rects === undefined || frame.rects.length === 0 ? {} : { rects: frame.rects },
         }
       }
     } catch (error) {

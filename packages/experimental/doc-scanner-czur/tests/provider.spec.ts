@@ -229,9 +229,11 @@ describe('CzurDocScannerProvider', () => {
       stills.push({ mimeType: image.mimeType, byteLength: image.data.byteLength })
     })
     await provider.connect(AbortSignal.timeout(5_000))
-    expect(runtime.requests.map(row => row.method)).toEqual(expect.arrayContaining([
-      'device.set_turn_detect',
-    ]))
+    expect(runtime.requests.find(row => row.method === 'capture.set_turn_detect')?.params).toMatchObject({
+      enabled: true,
+      auto_capture: false,
+      scan_device_type: 0,
+    })
     runtime.emitHardgrab()
     await vi.waitFor(() => {
       expect(stills.length).toBeGreaterThanOrEqual(1)

@@ -1,15 +1,23 @@
 /** Wire types for the document-scanner Remote. */
 import type {
+  DocScannerCaptureProfile,
   DocScannerCaptureResult,
+  DocScannerColorMode,
   DocScannerConnectionPhase,
+  DocScannerFrameRect,
+  DocScannerPageProcessing,
   DocScannerPreviewFrameWire,
   DocScannerProviderId,
   DocScannerSnapshot,
 } from '@deepseek-ai/dsh-doc-scanner'
 
 export type {
+  DocScannerCaptureProfile,
   DocScannerCaptureResult,
+  DocScannerColorMode,
   DocScannerConnectionPhase,
+  DocScannerFrameRect,
+  DocScannerPageProcessing,
   DocScannerPreviewFrameWire,
   DocScannerProviderId,
   DocScannerSnapshot,
@@ -40,4 +48,11 @@ export interface DocScannerCaptureRequest {
    * Omission archives under the Host process working directory.
    */
   readonly sessionId?: string
+  /** Treatment shared with the live viewfinder. Omission keeps the Host profile. */
+  readonly profile?: DocScannerCaptureProfile
+}
+
+/** Live profile update; does not reopen the device. */
+export interface DocScannerProfileRequest {
+  readonly profile: DocScannerCaptureProfile
 }

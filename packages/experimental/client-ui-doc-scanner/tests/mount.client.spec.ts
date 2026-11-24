@@ -15,7 +15,7 @@ import {
 import { DocScannerBar, type DocScannerBarInjected } from '../src/client/DocScannerBar.tsx'
 import { DocScannerPreviewBody, type DocScannerPreviewInjected } from '../src/client/DocScannerPreviewBody.tsx'
 import type { DocScannerCaptureResult } from '@deepseek-ai/dsh-api-doc-scanner/types'
-import { flush } from './fixtures.client.ts'
+import { flush, readinessIn } from './fixtures.client.ts'
 import type { DocScannerReadiness } from '../src/client/readiness.ts'
 import type { DocScannerSessionUi } from '../src/client/session-ui.ts'
 
@@ -108,7 +108,8 @@ async function fixture(fail = false) {
   }))
   const close = vi.fn(async () => ({ ok: true, value: {} }))
   const followStills = vi.fn()
-  ctx.provide('remote.docScanner', { connect, capture, close, follow: vi.fn(), preview: vi.fn(), followStills })
+  const setCaptureProfile = vi.fn(async () => ({ ok: true, value: undefined }))
+  ctx.provide('remote.docScanner', { connect, capture, close, follow: vi.fn(), preview: vi.fn(), followStills, setCaptureProfile })
   const list = vi.fn(async () => ({
     ok: true as const,
     value: {
@@ -204,7 +205,7 @@ async function fixture(fail = false) {
   } as never, () => null)
   if (fail) vi.spyOn(ctx.slots, 'inject').mockImplementationOnce(() => { throw new Error('slot failed') })
   return {
-    ctx, unmount, openTabIn, openResource, list, readBytes, connect, capture, close, createDrafts, addAttachments,
+    ctx, unmount, openTabIn, openResource, list, readBytes, connect, capture, close, setCaptureProfile, createDrafts, addAttachments,
     addReferences, canInsertReferences, notify, focus, register, registerTab, boost, registerSource, registeredSources,
     shellState,
   }
@@ -637,6 +638,22 @@ it('binds the archive Session once and keeps the same state for a repeat bind', 
   expect(b.ui.getSnapshot()).toBe(bound)
 })
 
+it('keeps a profile locally until the camera is ready, then forwards a failure', async () => {
+  const b = await mounted()
+  const profile = { pageProcessing: 'curved_book' as const, colorMode: 'black_white' as const }
+  await b.preview.setCaptureProfile(profile)
+  expect(b.setCaptureProfile).not.toHaveBeenCalled()
+  mirrored.readiness?.set(readinessIn('capturing'))
+  await b.preview.setCaptureProfile(profile)
+  mirrored.readiness?.set(readinessIn('ready'))
+  await b.preview.setCaptureProfile(profile)
+  expect(b.setCaptureProfile).toHaveBeenCalledWith({ profile })
+  b.setCaptureProfile.mockResolvedValueOnce({ ok: false, error: REMOTE_FAILURE.error } as never)
+  await expect(b.preview.setCaptureProfile(profile)).rejects.toBe(REMOTE_FAILURE.error)
+  await b.preview.capture(b.signal)
+  expect(b.capture).toHaveBeenCalledWith(expect.objectContaining({ profile }), b.signal)
+})
+
 it('connects with an empty request and rethrows a failed connect', async () => {
   const b = await mounted()
   await b.preview.connect(b.signal)
@@ -648,7 +665,10 @@ it('connects with an empty request and rethrows a failed connect', async () => {
 it('captures without a session scope, keeps a failed capture out of the tray, and refuses a full tray', async () => {
   const b = await mounted()
   await b.preview.capture(b.signal)
-  expect(b.capture).toHaveBeenCalledWith({ batchId: b.ui.getSnapshot().batchId }, b.signal)
+  expect(b.capture).toHaveBeenCalledWith({
+    batchId: b.ui.getSnapshot().batchId,
+    profile: { pageProcessing: 'single_page', colorMode: 'auto_optimize' },
+  }, b.signal)
   expect(b.ui.getSnapshot().captures).toHaveLength(1)
 
   b.capture.mockResolvedValueOnce(REMOTE_FAILURE as never)

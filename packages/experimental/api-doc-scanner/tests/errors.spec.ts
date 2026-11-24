@@ -117,6 +117,8 @@ describe('preview', () => {
       preview: async function* () {
         yield await Promise.resolve(frame())
         yield await Promise.resolve(frame(7))
+        yield await Promise.resolve({ ...frame(), rects: [] })
+        yield await Promise.resolve({ ...frame(), rects: [{ x: 1, y: 2, width: 3, height: 4 }] })
       },
     })
     const seen = []
@@ -124,7 +126,23 @@ describe('preview', () => {
     expect(seen).toEqual([
       { dataBase64: 'AQID', mimeType: 'image/jpeg', width: 4, height: 5 },
       { dataBase64: 'AQID', mimeType: 'image/jpeg', width: 4, height: 5, ts: 7 },
+      { dataBase64: 'AQID', mimeType: 'image/jpeg', width: 4, height: 5 },
+      { dataBase64: 'AQID', mimeType: 'image/jpeg', width: 4, height: 5, rects: [{ x: 1, y: 2, width: 3, height: 4 }] },
     ])
+  })
+
+  it('stores a capture profile and maps a failure', async () => {
+    const seen: unknown[] = []
+    const api = controllerOver({
+      setCaptureProfile: async (profile) => { seen.push(profile) },
+    })
+    const profile = { pageProcessing: 'curved_book' as const, colorMode: 'black_white' as const }
+    await api.setCaptureProfile({ profile })
+    expect(seen).toEqual([profile])
+    const failingApi = controllerOver({
+      setCaptureProfile: failing(new DocScannerError('not ready', 'DOC_SCANNER_NOT_READY')),
+    })
+    await expect(failingApi.setCaptureProfile({ profile })).rejects.toMatchObject({ code: 'doc-scanner/not-ready' })
   })
 
   it('maps a stream failure', async () => {

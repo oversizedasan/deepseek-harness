@@ -2,7 +2,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { RemoteStreamCarrierError } from '@deepseek-ai/dsh-api-gateway/client'
 import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
-import type { DocScannerPreviewFrameWire } from '@deepseek-ai/dsh-api-doc-scanner/types'
+import type { DocScannerFrameRect, DocScannerPreviewFrameWire } from '@deepseek-ai/dsh-api-doc-scanner/types'
 import type {} from '@deepseek-ai/dsh-api-doc-scanner/remote'
 import type { DocScannerReadiness } from './readiness.ts'
 
@@ -11,6 +11,12 @@ export interface DocScannerPreviewFeed {
   readonly src: string | null
   readonly error: string | null
   readonly streaming: boolean
+  /** Detection boxes for the latest frame. Empty when the frame has none. */
+  readonly rects: readonly DocScannerFrameRect[]
+  /** Pixel width of the latest frame. Zero before the first frame. */
+  readonly frameWidth: number
+  /** Pixel height of the latest frame. Zero before the first frame. */
+  readonly frameHeight: number
 }
 
 /**
@@ -25,7 +31,14 @@ export function observePreviewFeed(
   ctx: Context,
   readiness: SnapshotStore<DocScannerReadiness>,
 ): { state: SnapshotStore<DocScannerPreviewFeed>; dispose: () => Promise<void> } {
-  const state = createSnapshotStore<DocScannerPreviewFeed>({ src: null, error: null, streaming: false })
+  const state = createSnapshotStore<DocScannerPreviewFeed>({
+    src: null,
+    error: null,
+    streaming: false,
+    rects: [],
+    frameWidth: 0,
+    frameHeight: 0,
+  })
   let disposed = false
   let generation = 0
   let active: { dispose: () => Promise<void>; done: Promise<void> } | undefined
@@ -49,7 +62,7 @@ export function observePreviewFeed(
       carrierFailed: (error) => {
         if (disposed || token !== generation) return
         state.set({
-          src: state.getSnapshot().src,
+          ...state.getSnapshot(),
           streaming: false,
           error: error.message,
         })
@@ -67,6 +80,9 @@ export function observePreviewFeed(
             src: `data:${item.value.mimeType};base64,${item.value.dataBase64}`,
             error: null,
             streaming: true,
+            rects: item.value.rects ?? [],
+            frameWidth: item.value.width,
+            frameHeight: item.value.height,
           })
           item.accept()
         }
@@ -74,7 +90,7 @@ export function observePreviewFeed(
         // oxlint-disable-next-line typescript/no-unnecessary-condition -- dispose() or a restart can change these between awaits
         if (!disposed && token === generation) {
           state.set({
-            src: state.getSnapshot().src,
+            ...state.getSnapshot(),
             streaming: false,
             error: error instanceof Error ? error.message : String(error),
           })
@@ -95,7 +111,7 @@ export function observePreviewFeed(
     const previewable = phase === 'ready' || phase === 'capturing'
     if (previewable) start()
     else void stop().then(() => {
-      if (!disposed) state.set({ src: null, error: null, streaming: false })
+      if (!disposed) state.set({ src: null, error: null, streaming: false, rects: [], frameWidth: 0, frameHeight: 0 })
     })
   }
 

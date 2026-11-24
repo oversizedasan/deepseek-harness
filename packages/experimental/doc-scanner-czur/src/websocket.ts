@@ -37,7 +37,12 @@ function awaitSocketOpen(socket: CzurCommandWebSocket, signal: AbortSignal): Pro
   return new Promise<void>((resolve, reject) => {
     const onAbort = (): void => {
       cleanup()
-      socket.close()
+      try {
+        socket.close()
+      } catch (error) {
+        // `ws` throws when close() runs before the handshake finishes.
+        void error
+      }
       reject(signal.reason instanceof Error ? signal.reason : new Error('Aborted'))
     }
     const onOpen = (): void => {

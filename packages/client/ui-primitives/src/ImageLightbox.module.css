@@ -34,10 +34,8 @@
   box-shadow: var(--dsw-elevation-prominent);
 }
 
-.close {
+.control {
   position: absolute;
-  top: 20px;
-  right: 20px;
   z-index: 1;
   display: grid;
   place-items: center;
@@ -51,4 +49,35 @@
   cursor: pointer;
 }
 
-.close:focus-visible { outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary)); outline-offset: 3px; }
+.close {
+  top: 20px;
+  right: 20px;
+}
+
+.previous,
+.next {
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.previous { left: 20px; }
+.next { right: 20px; }
+
+.position {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  z-index: 1;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 4px 10px;
+  border-radius: 999px;
+  corner-shape: round;
+  background: var(--dsw-specific-input-major);
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.control:focus-visible { outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary)); outline-offset: 3px; }
