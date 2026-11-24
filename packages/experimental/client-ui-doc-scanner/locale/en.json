@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Document scanner UI",
+    "description": "Status chip, plus-menu entry, live preview tab, batch tray, and Mock intent chips for a document camera."
+  }
+}

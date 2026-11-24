@@ -64,6 +64,13 @@ Promotion requires a named product role, documented public behavior and limitati
 | [`liveshare`](liveshare/README.md) | Opt-in LiveShare host bundle: Relay-backed Session sharing at the `view` or `write` tier, with forking and attachment uploads as independent switches | injects `connection`; serves the viewer page through the Host's web resources |
 | [`liveshare-protocol`](liveshare-protocol/README.md) | Wire frames and the identity contract shared by the owner bundle and the Relay | library and protocol — no ctx key |
 | [`voice-input-bundle`](voice-input-bundle/README.md) | Default-disabled optional voice input composition | — |
+| [`doc-scanner`](doc-scanner/README.md) | Document-camera registry, capture, and preview-frame stream | `ctx.docScanner` |
+| [`doc-scanner-mock`](doc-scanner-mock/README.md) | Mock document camera for connection, preview, and capture demos | registers on `ctx.docScanner` |
+| [`doc-scanner-czur`](doc-scanner-czur/README.md) | CZUR SDK Open provider (Command + Video WS, hardgrab stills) | registers on `ctx.docScanner` when enabled |
+| [`api-doc-scanner`](api-doc-scanner/README.md) | Authenticated document-scanner Remote for Web clients | `ctx.docScannerController` |
+| [`client-ui-doc-scanner`](client-ui-doc-scanner/README.md) | Status chip, overlay viewfinder, batch attach | — |
+| [`doc-scanner-skills`](doc-scanner-skills/README.md) | Demo `homework-grade` / `wrong-book` skills for Composer `/` | `ctx.skills` |
+| [`doc-scanner-bundle`](doc-scanner-bundle/README.md) | Explicit `--patch` composition for the Mock document scanner | — |
 | [`client-ui-stats`](client-ui-stats/README.md) | Per-turn and per-step context, timing, cache, and tool cost for Web | — |
 | [`auto-review`](auto-review/README.md) | Explicit Web layer for same-model review before each native or PTC inner tool call | — |
 | [`subagent-oar`](subagent-oar/README.md) | Run standalone external coding-agent tasks through OAR | `ctx.subagents` |
@@ -108,6 +115,8 @@ Promotion requires a named product role, documented public behavior and limitati
 - [Browser use](../../docs/subsystems/browser-use.md) — browser provider choices and Session ownership.
 - [Agent Teams subsystem](../../docs/subsystems/agent-team.md) — durable Team types and the `ctx.agentTeams` service API.
 - [Experimental subtree rules](AGENTS.md) — what experimental status does and does not relax.
+- [Document scanner practice guide](../../docs/user/develop/practice/doc-scanner.md) — enable the Mock demo and Phase-2 CZUR handoff.
+- [Document scanner Agent Note](../../.agents/notes/proposed/feature/2026-11-18-doc-scanner-capability.md) — why the seam keeps connection state live and business workflows deferred.
 
 -----
 

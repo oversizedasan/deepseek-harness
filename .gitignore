@@ -39,6 +39,11 @@ python/**/.pytest_cache/
 apps/web/dist/
 apps/cli/docs/
 .artifacts/
+# Local harness homes / workspace runtime (sessions, credentials, captures).
+.dsh/
+.dsh-agent-web/
+# Doc-scanner batch archives written into the open workspace.
+Captures/
 .dsh-build/
 .dsh-report/
 .ui-review/

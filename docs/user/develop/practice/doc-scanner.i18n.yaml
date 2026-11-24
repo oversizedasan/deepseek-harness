@@ -1,0 +1,28 @@
+# Bilingual-pair consistency record for doc-scanner.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/user/develop/practice/doc-scanner.md
+/document-scanner-experimental:
+  en: bfc24b15232eb310
+  zh: e47eecc3fef7cfb9
+/document-scanner-experimental/why-this-shape:
+  en: 3e533d5faa01605d
+  zh: 31340681192eee63
+/document-scanner-experimental/package-topology:
+  en: 6eda4e15f1e2a214
+  zh: f1c0c99e5dc70bf7
+/document-scanner-experimental/run-the-mock-demo:
+  en: f5eed704159b13d0
+  zh: d865e5b713c4005c
+/document-scanner-experimental/connection-phases:
+  en: 599f8c27153a9145
+  zh: 46090a1575e3c8c8
+/document-scanner-experimental/phase-2-czur-hardware:
+  en: d069158779bdf617
+  zh: 568feacfcd17f031
+/document-scanner-experimental/do-not:
+  en: 9fb4119b004d2995
+  zh: d6423034c534a04c
+/document-scanner-experimental/related:
+  en: 2a34e5ae3fa27a65
+  zh: 53937152787ab359

@@ -1,0 +1,17 @@
+- insert:
+    - id: doc-scanner
+      name: '@deepseek-ai/dsh-doc-scanner'
+    - id: doc-scanner-mock
+      name: '@deepseek-ai/dsh-doc-scanner-mock'
+    - id: doc-scanner-czur
+      name: '@deepseek-ai/dsh-doc-scanner-czur'
+      disabled: true
+      config:
+        commandWsUrl: wss://sdk-runtime.localhost:18090
+        allowInsecureTls: true
+    - id: doc-scanner-skills
+      name: '@deepseek-ai/dsh-doc-scanner-skills'
+    - id: api-doc-scanner
+      name: '@deepseek-ai/dsh-api-doc-scanner'
+    - id: ui-doc-scanner
+      name: '@deepseek-ai/dsh-client-ui-doc-scanner'

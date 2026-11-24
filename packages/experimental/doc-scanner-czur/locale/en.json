@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "CZUR document scanner",
+    "description": "Connect a CZUR document camera through the local SDK Runtime."
+  }
+}

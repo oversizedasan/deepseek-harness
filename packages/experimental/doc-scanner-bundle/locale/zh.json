@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "文档扫描仪",
+    "description": "连接文档相机、显示就绪状态并拍摄静态图片。",
+    "detail": "docs/DETAIL.zh.md"
+  }
+}

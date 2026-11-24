@@ -64,6 +64,13 @@ kind: "package-group"
 | [`liveshare`](liveshare/README.zh.md) | 可选 LiveShare host bundle：通过 Relay 以 `view` 或 `write` 档分享会话，派生与附件上传为独立开关 | 注入 `connection`；通过宿主 Web 资源提供查看页 |
 | [`liveshare-protocol`](liveshare-protocol/README.zh.md) | owner bundle 与 Relay 共用的线路帧与身份契约 | 库与协议，不使用 ctx key |
 | [`voice-input-bundle`](voice-input-bundle/README.zh.md) | 默认禁用的可选语音输入组合 | — |
+| [`doc-scanner`](doc-scanner/README.zh.md) | 文档相机注册表、拍照与预览帧流 | `ctx.docScanner` |
+| [`doc-scanner-mock`](doc-scanner-mock/README.zh.md) | 用于连接、预览与拍照演示的 Mock 文档相机 | 注册到 `ctx.docScanner` |
+| [`doc-scanner-czur`](doc-scanner-czur/README.zh.md) | CZUR SDK Open 提供方（Command + Video WS、硬拍静帧） | 启用后注册到 `ctx.docScanner` |
+| [`api-doc-scanner`](api-doc-scanner/README.zh.md) | 面向 Web 客户端的认证文档扫描仪 Remote | `ctx.docScannerController` |
+| [`client-ui-doc-scanner`](client-ui-doc-scanner/README.zh.md) | 状态芯片、叠层取景、本批附上 | — |
+| [`doc-scanner-skills`](doc-scanner-skills/README.zh.md) | 演示技能 `homework-grade` / `wrong-book`（Composer `/`） | `ctx.skills` |
+| [`doc-scanner-bundle`](doc-scanner-bundle/README.zh.md) | 用显式 `--patch` 组装 Mock 文档扫描仪 | — |
 | [`client-ui-stats`](client-ui-stats/README.zh.md) | Web 端按轮次与步骤展示上下文、耗时、缓存与工具成本 | — |
 | [`auto-review`](auto-review/README.zh.md) | 显式 Web 层，在每个原生或 PTC inner 工具调用前使用同一模型审查 | — |
 | [`subagent-oar`](subagent-oar/README.zh.md) | 通过 OAR 执行外部编程智能体的独立任务 | `ctx.subagents` |
@@ -108,6 +115,8 @@ kind: "package-group"
 - [浏览器操作](../../docs/subsystems/browser-use.zh.md)——浏览器提供方选择与 Session 所有权。
 - [Agent Teams 子系统](../../docs/subsystems/agent-team.zh.md)——持久 Team 类型与 `ctx.agentTeams` 服务 API。
 - [实验子树规则](AGENTS.md)——实验状态放宽了什么、不放宽什么。
+- [文档扫描仪实践指南](../../docs/user/develop/practice/doc-scanner.zh.md)——启用 Mock 演示与第二阶段 CZUR 交接。
+- [文档扫描仪 Agent Note](../../.agents/notes/proposed/feature/2026-11-18-doc-scanner-capability.zh.md)——为何连接态保持 live、业务后置。
 
 -----
 

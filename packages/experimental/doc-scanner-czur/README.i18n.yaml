@@ -1,0 +1,34 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/experimental/doc-scanner-czur/README.md
+/:
+  en: 3877339b014138a7
+  zh: 22e8870edc4ca1a5
+/deepseek-ai-dsh-doc-scanner-czur:
+  en: 0fd2decb86918e35
+  zh: fe328f6dde8e3818
+/deepseek-ai-dsh-doc-scanner-czur/summary:
+  en: a20fc0ec5b2f1027
+  zh: 688fe391dc14489b
+/deepseek-ai-dsh-doc-scanner-czur/table-of-contents:
+  en: 9bc9db0c47e3d26f
+  zh: 9bc9db0c47e3d26f
+/deepseek-ai-dsh-doc-scanner-czur/use-this-package:
+  en: a8199c7e62732062
+  zh: a58f967299fa8c48
+/deepseek-ai-dsh-doc-scanner-czur/phase-2-checklist:
+  en: 40634545a61d9d03
+  zh: 1407aa674d28a30d
+/deepseek-ai-dsh-doc-scanner-czur/further-exploration:
+  en: 7195f268ad9280a8
+  zh: 67f0c835dd0a9f2e
+/deepseek-ai-dsh-doc-scanner-czur/model-experience:
+  en: b1ab48343fcb4bda
+  zh: 020291269ce3fc69
+/deepseek-ai-dsh-doc-scanner-czur/model-experience/kv-cache-effect:
+  en: 60835eca1cee4e0e
+  zh: bbad12de11ecdc4f
+/deepseek-ai-dsh-doc-scanner-czur/known-limitations-and-deferred-work:
+  en: bc0bd84785de2b8d
+  zh: fbc1fea37cddece9

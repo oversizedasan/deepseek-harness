@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Document scanner",
+    "description": "Register document-camera providers and coordinate capture."
+  }
+}

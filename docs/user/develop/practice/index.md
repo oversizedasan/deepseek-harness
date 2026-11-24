@@ -153,3 +153,4 @@ export function apply(ctx: Context) {
 ## Next steps
 
 - [LLM adapter](./llm-adapter.md) — implement an LLM provider
+- [Document scanner (experimental)](./doc-scanner.md) — Mock document-camera demo and Phase-2 CZUR handoff

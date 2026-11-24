@@ -335,6 +335,13 @@
     { "path": "./packages/experimental/speech-to-text-sensevoice" },
     { "path": "./packages/experimental/api-speech-to-text" },
     { "path": "./packages/experimental/voice-input-bundle" },
+    { "path": "./packages/experimental/doc-scanner" },
+    { "path": "./packages/experimental/doc-scanner-mock" },
+    { "path": "./packages/experimental/doc-scanner-czur" },
+    { "path": "./packages/experimental/doc-scanner-skills" },
+    { "path": "./packages/experimental/api-doc-scanner" },
+    { "path": "./packages/experimental/doc-scanner-bundle" },
+
     { "path": "./packages/experimental/plugin-market-bundle" },
     { "path": "./packages/client/locale/tsconfig.host.json" },
     { "path": "./packages/client/ui-theme/tsconfig.host.json" },

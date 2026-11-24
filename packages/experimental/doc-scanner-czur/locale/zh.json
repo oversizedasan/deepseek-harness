@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "CZUR 文档扫描仪",
+    "description": "通过本地 SDK Runtime 连接 CZUR 高拍仪。"
+  }
+}

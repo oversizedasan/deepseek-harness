@@ -1,0 +1,31 @@
+# Bilingual-pair consistency record for 2026-11-18-doc-scanner-capability.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/proposed/feature/2026-11-18-doc-scanner-capability.md
+/agent-note-document-scanner-capability-for-classroom-capture:
+  en: bae3501358729775
+  zh: 853dbf90218cca56
+/agent-note-document-scanner-capability-for-classroom-capture/problem:
+  en: 90391660d10ca8c6
+  zh: 5a4e62ac7bda7afc
+/agent-note-document-scanner-capability-for-classroom-capture/proposal:
+  en: eca683c0389dd2d1
+  zh: 630e92bc750abae7
+/agent-note-document-scanner-capability-for-classroom-capture/proposal/teacher-interaction-this-phase:
+  en: 04fa6fc43b07982f
+  zh: 1035655473f7eaa9
+/agent-note-document-scanner-capability-for-classroom-capture/proposal/harness-mindset-applied-here:
+  en: 334d53bf4c58ece4
+  zh: f55d61160e3e9b76
+/agent-note-document-scanner-capability-for-classroom-capture/proposal/phase-boundary:
+  en: c517ef50b36940df
+  zh: 3d5c01255b72039d
+/agent-note-document-scanner-capability-for-classroom-capture/alternatives-considered:
+  en: 7e1f02df94fe62bb
+  zh: 8aff00762e4acd30
+/agent-note-document-scanner-capability-for-classroom-capture/acceptance-criteria:
+  en: b849eaa47457c421
+  zh: ee39f16621b30666
+/agent-note-document-scanner-capability-for-classroom-capture/risks:
+  en: 0b04257bfbfb228f
+  zh: fd9abe799ab34f86

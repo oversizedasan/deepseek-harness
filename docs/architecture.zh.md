@@ -149,6 +149,7 @@ seam 正是替换一个提供方就能改变整个产品的原因。文件系统
 
 [Agent Teams](subsystems/agent-team.zh.md)在根 Session 开启后提供任务策略和共享任务板。普通 subagent 控制工具负责身份、通信、发现、中断和收件箱等待。
 
+<a id="where-new-behavior-goes"></a>
 ## 新行为的归属位置
 
 新行为附加到已有文档记录的扩展点。改动循环本身时，本映射随之更新。

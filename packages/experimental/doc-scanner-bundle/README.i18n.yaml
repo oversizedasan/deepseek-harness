@@ -1,0 +1,31 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write packages/experimental/doc-scanner-bundle/README.md
+/:
+  en: 08b7ddccb461db2f
+  zh: cd5ba7d5a09c7b7b
+/deepseek-ai-dsh-doc-scanner-bundle:
+  en: 151079a84315f8f1
+  zh: 84154375ccf34fba
+/deepseek-ai-dsh-doc-scanner-bundle/summary:
+  en: 6c3442de59f738ff
+  zh: 4bd613f351867dd9
+/deepseek-ai-dsh-doc-scanner-bundle/table-of-contents:
+  en: 35291ef202af40d0
+  zh: 35291ef202af40d0
+/deepseek-ai-dsh-doc-scanner-bundle/use-this-package:
+  en: 7f9759f92ecc4f41
+  zh: 6b8a4389c346ddeb
+/deepseek-ai-dsh-doc-scanner-bundle/further-exploration:
+  en: 217ca97eaaa2310c
+  zh: ac4c260c77ce15a4
+/deepseek-ai-dsh-doc-scanner-bundle/model-experience:
+  en: b1ab48343fcb4bda
+  zh: 020291269ce3fc69
+/deepseek-ai-dsh-doc-scanner-bundle/model-experience/kv-cache-effect:
+  en: 60835eca1cee4e0e
+  zh: bbad12de11ecdc4f
+/deepseek-ai-dsh-doc-scanner-bundle/known-limitations-and-deferred-work:
+  en: 3b6a0bb8adce3be9
+  zh: c3c31613fc50c62c

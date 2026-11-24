@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Document scanner API",
+    "description": "Authenticated document-scanner Remote for Web clients."
+  }
+}

@@ -9702,6 +9702,21 @@ importers:
         specifier: workspace:*
         version: link:../../session/working-directory
 
+  packages/experimental/api-doc-scanner:
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:~
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-doc-scanner':
+        specifier: workspace:*
+        version: link:../doc-scanner
+      '@deepseek-ai/dsh-doc-scanner-mock':
+        specifier: workspace:*
+        version: link:../doc-scanner-mock
+      '@deepseek-ai/dsh-typert-protocol':
+        specifier: workspace:*
+        version: link:../../typert/protocol
+
   packages/experimental/api-speech-to-text:
     dependencies:
       '@deepseek-ai/schemastery':
@@ -10343,6 +10358,72 @@ importers:
       react-dom:
         specifier: ^18.2.0
         version: 18.3.1(react@18.3.1)
+
+  packages/experimental/client-ui-doc-scanner:
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:~
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-api-doc-scanner':
+        specifier: workspace:*
+        version: link:../api-doc-scanner
+      '@deepseek-ai/dsh-api-gateway':
+        specifier: workspace:*
+        version: link:../../api/gateway
+      '@deepseek-ai/dsh-api-remotes':
+        specifier: workspace:*
+        version: link:../../api/remotes
+      '@deepseek-ai/dsh-api-session-controller':
+        specifier: workspace:*
+        version: link:../../api/session-controller
+      '@deepseek-ai/dsh-client-locale':
+        specifier: workspace:*
+        version: link:../../client/locale
+      '@deepseek-ai/dsh-client-store':
+        specifier: workspace:*
+        version: link:../../client/store
+      '@deepseek-ai/dsh-client-ui-commands':
+        specifier: workspace:*
+        version: link:../../client/ui-commands
+      '@deepseek-ai/dsh-client-ui-conversation':
+        specifier: workspace:*
+        version: link:../../client/ui-conversation
+      '@deepseek-ai/dsh-client-ui-input-trigger':
+        specifier: workspace:*
+        version: link:../../client/ui-input-trigger
+      '@deepseek-ai/dsh-client-ui-primitives':
+        specifier: workspace:*
+        version: link:../../client/ui-primitives
+      '@deepseek-ai/dsh-client-ui-renderer':
+        specifier: workspace:*
+        version: link:../../client/ui-renderer
+      '@deepseek-ai/dsh-client-ui-session':
+        specifier: workspace:*
+        version: link:../../client/ui-session
+      '@deepseek-ai/dsh-client-ui-sidebar-right':
+        specifier: workspace:*
+        version: link:../../client/ui-sidebar-right
+      '@deepseek-ai/dsh-client-ui-skill':
+        specifier: workspace:*
+        version: link:../../client/ui-skill
+      '@deepseek-ai/dsh-client-ui-slots':
+        specifier: workspace:*
+        version: link:../../client/ui-slots
+      '@deepseek-ai/dsh-file-reference':
+        specifier: workspace:*
+        version: link:../../context/file-reference
+      '@deepseek-ai/dsh-session':
+        specifier: workspace:*
+        version: link:../../core/session
+      '@deepseek-ai/dsh-typert-protocol':
+        specifier: workspace:*
+        version: link:../../typert/protocol
+      '@deepseek-ai/dsh-util-workspace-path':
+        specifier: workspace:*
+        version: link:../../util/workspace-path
+      react:
+        specifier: ^18.2.0
+        version: 18.3.1
 
   packages/experimental/client-ui-forge:
     dependencies:
@@ -11507,6 +11588,100 @@ importers:
       react-dom:
         specifier: ^18.2.0
         version: 18.3.1(react@18.3.1)
+
+  packages/experimental/doc-scanner:
+    dependencies:
+      '@deepseek-ai/dsh-brand':
+        specifier: workspace:*
+        version: link:../../util/brand
+      '@deepseek-ai/dsh-error':
+        specifier: workspace:*
+        version: link:../../util/error
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:~
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-attachment':
+        specifier: workspace:*
+        version: link:../../attachment/attachment
+
+  packages/experimental/doc-scanner-bundle:
+    dependencies:
+      '@deepseek-ai/dsh-api-doc-scanner':
+        specifier: workspace:*
+        version: link:../api-doc-scanner
+      '@deepseek-ai/dsh-client-ui-doc-scanner':
+        specifier: workspace:*
+        version: link:../client-ui-doc-scanner
+      '@deepseek-ai/dsh-doc-scanner':
+        specifier: workspace:*
+        version: link:../doc-scanner
+      '@deepseek-ai/dsh-doc-scanner-czur':
+        specifier: workspace:*
+        version: link:../doc-scanner-czur
+      '@deepseek-ai/dsh-doc-scanner-mock':
+        specifier: workspace:*
+        version: link:../doc-scanner-mock
+      '@deepseek-ai/dsh-doc-scanner-skills':
+        specifier: workspace:*
+        version: link:../doc-scanner-skills
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:~
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/cordis-plugin-include':
+        specifier: workspace:~
+        version: link:../../../vendor/include
+      '@deepseek-ai/cordis-plugin-loader':
+        specifier: workspace:~
+        version: link:../../../vendor/loader
+
+  packages/experimental/doc-scanner-czur:
+    dependencies:
+      '@deepseek-ai/dsh-brand':
+        specifier: workspace:*
+        version: link:../../util/brand
+      '@deepseek-ai/dsh-credentials':
+        specifier: workspace:*
+        version: link:../../credentials/credentials
+      '@deepseek-ai/schemastery':
+        specifier: link:../../../vendor/schemastery
+        version: link:../../../vendor/schemastery
+      ws:
+        specifier: ^8.18.3
+        version: 8.21.3
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:~
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-doc-scanner':
+        specifier: workspace:*
+        version: link:../doc-scanner
+      '@types/ws':
+        specifier: ^8.18.1
+        version: 8.18.1
+
+  packages/experimental/doc-scanner-mock:
+    dependencies:
+      '@deepseek-ai/dsh-brand':
+        specifier: workspace:*
+        version: link:../../util/brand
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:~
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-doc-scanner':
+        specifier: workspace:*
+        version: link:../doc-scanner
+
+  packages/experimental/doc-scanner-skills:
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:~
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-skill':
+        specifier: workspace:*
+        version: link:../../skill/skill
 
   packages/experimental/forge:
     dependencies:

@@ -1,0 +1,19 @@
+# Hardware CZUR composition: Mock off, CZUR on. Requires local SDK Runtime + CZUR_API_KEY.
+- insert:
+    - id: doc-scanner
+      name: '@deepseek-ai/dsh-doc-scanner'
+    - id: doc-scanner-mock
+      name: '@deepseek-ai/dsh-doc-scanner-mock'
+      disabled: true
+    - id: doc-scanner-czur
+      name: '@deepseek-ai/dsh-doc-scanner-czur'
+      config:
+        commandWsUrl: wss://sdk-runtime.localhost:18090
+        credentialRef: CZUR_API_KEY
+        allowInsecureTls: true
+    - id: doc-scanner-skills
+      name: '@deepseek-ai/dsh-doc-scanner-skills'
+    - id: api-doc-scanner
+      name: '@deepseek-ai/dsh-api-doc-scanner'
+    - id: ui-doc-scanner
+      name: '@deepseek-ai/dsh-client-ui-doc-scanner'

@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "Document scanner",
+    "description": "Connect a document camera, show readiness, and capture still images.",
+    "detail": "docs/DETAIL.md"
+  }
+}
